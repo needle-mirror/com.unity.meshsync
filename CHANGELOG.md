@@ -1,7 +1,13 @@
 # Changelog
 All notable changes to the MeshSync package will be documented in this file.
 
+## [0.1.0-preview] - 2020-04-16
+* feat: add a menu item to download DCC plugins
+* chore: change plugin build configuration to Release from MinSizeRel
+* docs: update links to MeshSyncDCCPlugins
+
 ## [0.0.3-preview] - 2020-03-24
+* fix: compile errors on Linux
 * chore: prebuilding zstd on Mac and Linux
 * chore: update zstd library on Windows to 1.4.4
 * chore: use Unicode for building plugins
