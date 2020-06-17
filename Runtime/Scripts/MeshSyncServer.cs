@@ -53,14 +53,14 @@ namespace Unity.MeshSync
 #endif
             
             m_serverSettings.port = (ushort)m_serverPort;
-            m_serverSettings.zUpCorrectionMode = m_zUpCorrection;
+            m_serverSettings.zUpCorrectionMode = (ZUpCorrectionMode) m_config.ZUpCorrection;
             m_server = Server.Start(ref m_serverSettings);
             m_server.fileRootPath = httpFileRootPath;
             m_handler = OnServerMessage;
 #if UNITY_EDITOR
             EditorApplication.update += PollServerEvents;
 #endif
-            if (m_logging)
+            if (m_config.Logging)
                 Debug.Log("MeshSync: server started (port: " + m_serverSettings.port + ")");
 
             m_serverStarted = true;
@@ -78,7 +78,7 @@ namespace Unity.MeshSync
             m_server.Stop();
             m_server = default(Server);
 
-            if (m_logging)
+            if (m_config.Logging)
                 Debug.Log("MeshSync: server stopped (port: " + m_serverSettings.port + ")");
 
             m_serverStarted = false;
@@ -96,7 +96,7 @@ namespace Unity.MeshSync
         void CheckParamsUpdated()  {
 
             if (m_server) {
-                m_server.zUpCorrectionMode = m_zUpCorrection;
+                m_server.zUpCorrectionMode = (ZUpCorrectionMode) m_config.ZUpCorrection;
             }
         }
         #endregion
@@ -161,7 +161,7 @@ namespace Unity.MeshSync
                 ServeMaterial(mat.material, mes);
             m_server.EndServe();
 
-            if (m_logging)
+            if (m_config.Logging)
                 Debug.Log("MeshSyncServer: served");
         }
 
@@ -423,10 +423,17 @@ namespace Unity.MeshSync
 
 
         #region Events
+
 #if UNITY_EDITOR
-        void OnValidate()
-        {
+        void OnValidate() {
             CheckParamsUpdated();
+        }
+
+        void Reset() {
+            MeshSyncProjectSettings projectSettings = MeshSyncProjectSettings.GetOrCreateSettings();
+            m_config = MeshSyncProjectSettings.CreatePlayerConfig(MeshSyncPlayerType.SERVER);
+            m_serverPort = projectSettings.GetDefaultServerPort();
+            
         }
 #endif
 
@@ -456,7 +463,7 @@ namespace Unity.MeshSync
         #region Fields
 
         [SerializeField] private bool m_autoStartServer = false;
-        [SerializeField] int m_serverPort = ServerSettings.defaultPort;
+        [SerializeField] int m_serverPort = MeshSyncConstants.DEFAULT_SERVER_PORT;
 
         ServerSettings m_serverSettings = ServerSettings.defaultValue;
         Server m_server;
