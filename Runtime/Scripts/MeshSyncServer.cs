@@ -39,6 +39,8 @@ namespace Unity.MeshSync
 
 
         internal bool IsServerStarted() { return m_serverStarted;}
+
+        internal bool DoesServerAllowPublicAccess() { return m_server.IsPublicAccessAllowed();}
         #endregion
 
 
@@ -51,12 +53,18 @@ namespace Unity.MeshSync
             //Deploy HTTP assets to StreamingAssets
             DeployStreamingAssets.Deploy();
 #endif
+            MeshSyncRuntimeSettings runtimeSettings = MeshSyncRuntimeSettings.GetOrCreateSettings();
+            
             
             m_serverSettings.port = (ushort)m_serverPort;
             m_serverSettings.zUpCorrectionMode = (ZUpCorrectionMode) m_config.ZUpCorrection;
+
             m_server = Server.Start(ref m_serverSettings);
-            m_server.fileRootPath = httpFileRootPath;
+            m_server.fileRootPath = GetServerDocRootPath();
+            m_server.AllowPublicAccess(runtimeSettings.GetServerPublicAccess());
+            
             m_handler = OnServerMessage;
+
 #if UNITY_EDITOR
             EditorApplication.update += PollServerEvents;
 #endif
@@ -430,9 +438,9 @@ namespace Unity.MeshSync
         }
 
         void Reset() {
-            MeshSyncProjectSettings projectSettings = MeshSyncProjectSettings.GetOrCreateSettings();
-            m_config = MeshSyncProjectSettings.CreatePlayerConfig(MeshSyncPlayerType.SERVER);
-            m_serverPort = projectSettings.GetDefaultServerPort();
+            MeshSyncRuntimeSettings runtimeSettings = MeshSyncRuntimeSettings.GetOrCreateSettings();
+            m_config = MeshSyncRuntimeSettings.CreatePlayerConfig(MeshSyncPlayerType.SERVER);
+            m_serverPort = runtimeSettings.GetDefaultServerPort();
             
         }
 #endif

@@ -5,13 +5,44 @@ using Unity.AnimeToolbox.Editor;
 using UnityEngine;
 using UnityEngine.UIElements;
 using Unity.MeshSync;
+using UnityEditor;
 using UnityEditor.UIElements;
 
-namespace UnityEditor.MeshSync {
+namespace Unity.MeshSync.Editor {
 internal class GeneralSettingsTab : IMeshSyncSettingsTab {
-	
-    public GeneralSettingsTab() {
-    }
+
+	internal class Contents {
+
+		public static readonly GUIContent ServerPort = EditorGUIUtility.TrTextContent("Server port");
+		public static readonly GUIContent AllowPublicAccess = EditorGUIUtility.TrTextContent("Allow public access");
+		public static readonly GUIContent Visibility = EditorGUIUtility.TrTextContent("Visibility");
+		public static readonly GUIContent Transform  = EditorGUIUtility.TrTextContent("Transform");
+		public static readonly GUIContent Cameras = EditorGUIUtility.TrTextContent("Cameras");
+		public static readonly GUIContent Lights  = EditorGUIUtility.TrTextContent("Lights");
+		public static readonly GUIContent Meshes = EditorGUIUtility.TrTextContent("Meshes");
+		public static readonly GUIContent UpdateMeshColliders = EditorGUIUtility.TrTextContent("Update mesh colliders");
+		public static readonly GUIContent Materials = EditorGUIUtility.TrTextContent("Materials");
+		public static readonly GUIContent FindMaterialsFromAssetDatabase = EditorGUIUtility.TrTextContent("Find materials from asset database");
+
+		public static readonly GUIContent AnimationInterpolation = EditorGUIUtility.TrTextContent("Animation interpolation");
+		public static readonly GUIContent KeyframeReduction  = EditorGUIUtility.TrTextContent("Keyframe reduction");
+		public static readonly GUIContent ReductionThreshold = EditorGUIUtility.TrTextContent("Reduction threshold");
+		public static readonly GUIContent ReductionEraseFlatCurves = EditorGUIUtility.TrTextContent("Reduction erase flat curves");
+		public static readonly GUIContent ZUpCorrection = EditorGUIUtility.TrTextContent("Z-Up correction");
+
+		
+		public static readonly GUIContent SyncMaterialList = EditorGUIUtility.TrTextContent("Sync material list");
+		public static readonly GUIContent ProgressiveDisplay = EditorGUIUtility.TrTextContent("Progressive display");
+		public static readonly GUIContent Logging = EditorGUIUtility.TrTextContent("Logging");
+		public static readonly GUIContent Profiling = EditorGUIUtility.TrTextContent("Profiling");
+
+		public static readonly GUIContent TweakTimeScale = EditorGUIUtility.TrTextContent("Time scale");
+		public static readonly GUIContent TweakTimeOffset = EditorGUIUtility.TrTextContent("Time offset");
+		public static readonly GUIContent TweakDropStep = EditorGUIUtility.TrTextContent("Drop step");
+		public static readonly GUIContent TweakReductionThreshold = EditorGUIUtility.TrTextContent("Reduction threshold");
+		public static readonly GUIContent TweakEraseFlatCurves = EditorGUIUtility.TrTextContent("Erase flat curves");
+		
+	}
 
 
 //----------------------------------------------------------------------------------------------------------------------        
@@ -33,22 +64,31 @@ internal class GeneralSettingsTab : IMeshSyncSettingsTab {
 		    Path.Combine(MeshSyncEditorConstants.PROJECT_SETTINGS_UIELEMENTS_PATH, "GeneralSettingsFieldTemplate")
 	    );
 
-	    //Add server port
-	    MeshSyncProjectSettings projectSettings = MeshSyncProjectSettings.GetOrCreateSettings();
+	    MeshSyncRuntimeSettings runtimeSettings = MeshSyncRuntimeSettings.GetOrCreateSettings();
 	    VisualElement  headerContainer = containerInstance.Query<VisualElement>("HeaderContainer").First();
-	    m_serverPortField = new IntegerField("Server Port");
-	    m_serverPortField.SetValueWithoutNotify(projectSettings.GetDefaultServerPort());
 	    
-	    m_serverPortField.RegisterValueChangedCallback((ChangeEvent<int> evt) => {
-		    MeshSyncProjectSettings settings = MeshSyncProjectSettings.GetOrCreateSettings();
-		    settings.SetDefaultServerPort((ushort) evt.newValue);
-		    settings.SaveSettings();
-	    });
-	    headerContainer.Add(m_serverPortField);        
+	    //Add server port
+	    Foldout serverSettingsFoldout = containerInstance.Query<Foldout>("ServerSettingsFoldout").First();
+	    m_serverPortField = AddField<IntegerField,int>(fieldTemplate, serverSettingsFoldout, Contents.ServerPort,
+		    runtimeSettings.GetDefaultServerPort(),
+		    (int newValue) => {
+			    MeshSyncRuntimeSettings settings = MeshSyncRuntimeSettings.GetOrCreateSettings();
+			    settings.SetDefaultServerPort((ushort) newValue);
+		    }
+	    );
+
+	    m_allowPublicAccessToggle = AddField<Toggle,bool>(fieldTemplate, serverSettingsFoldout, Contents.AllowPublicAccess,
+		    runtimeSettings.GetServerPublicAccess(),
+		    (bool  newValue) => {
+			    MeshSyncRuntimeSettings settings = MeshSyncRuntimeSettings.GetOrCreateSettings();
+			    settings.SetServerPublicAccess(newValue);
+		    }
+	    );
+	            
 	    
         //Add playerType popup
 	    VisualElement playerTypePopupContainer = containerInstance.Query<VisualElement>("PlayerTypePopupContainer").First();
-        PopupField<string> playerTypePopup = new PopupField<string>("Settings for object type",objectTypes, objectTypes[0]);
+        PopupField<string> playerTypePopup = new PopupField<string>("Settings for Object Type",objectTypes, objectTypes[0]);
         playerTypePopup.RegisterValueChangedCallback(OnPlayerTypePopupChanged);
 	    playerTypePopupContainer.Add(playerTypePopup);        
 
@@ -56,103 +96,104 @@ internal class GeneralSettingsTab : IMeshSyncSettingsTab {
 	    Foldout syncSettingsFoldout = containerInstance.Query<Foldout>("SyncSettingsFoldout").First();
 
 	    //Sync	           
-	    m_syncVisibilityToggle = AddField<Toggle,bool>(fieldTemplate, syncSettingsFoldout, "Visibility",
+	    m_syncVisibilityToggle = AddPlayerConfigField<Toggle,bool>(fieldTemplate, syncSettingsFoldout, Contents.Visibility,
 		    (MeshSyncPlayerConfig config, bool newValue) => { config.SyncVisibility = newValue; }
 	    );
-	    m_syncTransformToggle = AddField<Toggle,bool>(fieldTemplate, syncSettingsFoldout, "Transform",
+	    m_syncTransformToggle = AddPlayerConfigField<Toggle,bool>(fieldTemplate, syncSettingsFoldout, Contents.Transform,
 		    (MeshSyncPlayerConfig config, bool newValue) => { config.SyncTransform = newValue; }
 	    );
-	    m_syncCamerasToggle = AddField<Toggle,bool>(fieldTemplate, syncSettingsFoldout,"Cameras",
+	    m_syncCamerasToggle = AddPlayerConfigField<Toggle,bool>(fieldTemplate, syncSettingsFoldout, Contents.Cameras,
 		    (MeshSyncPlayerConfig config, bool newValue) => { config.SyncCameras = newValue; }
 	    );
-	    m_syncLightsToggle = AddField<Toggle,bool>(fieldTemplate, syncSettingsFoldout,"Lights",
+	    m_syncLightsToggle = AddPlayerConfigField<Toggle,bool>(fieldTemplate, syncSettingsFoldout, Contents.Lights,
 		    (MeshSyncPlayerConfig config, bool newValue) => { config.SyncLights = newValue; }
 	    );
-	    m_syncMeshesToggle = AddField<Toggle,bool>(fieldTemplate, syncSettingsFoldout,"Meshes",
+	    m_syncMeshesToggle = AddPlayerConfigField<Toggle,bool>(fieldTemplate, syncSettingsFoldout, Contents.Meshes,
 		    (MeshSyncPlayerConfig config, bool newValue) => { config.SyncMeshes = newValue; }
 	    );
-	    m_updateMeshCollidersToggle = AddField<Toggle,bool>(fieldTemplate, syncSettingsFoldout, 
-		    "Update Mesh Colliders",
+	    m_updateMeshCollidersToggle = AddPlayerConfigField<Toggle,bool>(fieldTemplate, syncSettingsFoldout, 
+		    Contents.UpdateMeshColliders,
 		    (MeshSyncPlayerConfig config, bool newValue) => { config.UpdateMeshColliders = newValue; }
 	    );
-	    m_syncMaterialsToggle = AddField<Toggle,bool>(fieldTemplate, syncSettingsFoldout, "Materials",
+	    m_syncMaterialsToggle = AddPlayerConfigField<Toggle,bool>(fieldTemplate, syncSettingsFoldout, Contents.Materials,
 		    (MeshSyncPlayerConfig config, bool newValue) => { config.SyncMaterials = newValue; }
 	    );
-	    m_findMaterialFromAssetsToggle = AddField<Toggle,bool>(fieldTemplate, syncSettingsFoldout, 
-		    "Find Materials from Asset Database",
+	    m_findMaterialFromAssetsToggle = AddPlayerConfigField<Toggle,bool>(fieldTemplate, syncSettingsFoldout, 
+		    Contents.FindMaterialsFromAssetDatabase,
 		    (MeshSyncPlayerConfig config, bool newValue) => { config.FindMaterialFromAssets = newValue; }
 	    );
 
 		//import
 	    Foldout importSettingsFoldout = containerInstance.Query<Foldout>("ImportSettingsFoldout").First();
 
-	    m_animationInterpolationPopup = AddPopupField(fieldTemplate, importSettingsFoldout, 
-		    "Animation Interpolation", m_animationInterpolationEnums,
+	    m_animationInterpolationPopup = AddPlayerConfigPopupField(fieldTemplate, importSettingsFoldout, 
+		    Contents.AnimationInterpolation, m_animationInterpolationEnums,
 		    (MeshSyncPlayerConfig config, int newValue) => { config.AnimationInterpolation = newValue; }
 	    );
-	    m_keyframeReductionToggle = AddField<Toggle,bool>(fieldTemplate, importSettingsFoldout, "Keyframe Reduction",
+	    m_keyframeReductionToggle = AddPlayerConfigField<Toggle,bool>(fieldTemplate, importSettingsFoldout, 
+		    Contents.KeyframeReduction,
 		    (MeshSyncPlayerConfig config, bool newValue) => { config.KeyframeReduction = newValue; }
 	    );
-	    m_reductionThresholdField = AddField<FloatField, float>(fieldTemplate, importSettingsFoldout, 
-		    "Reduction Threshold",
+	    m_reductionThresholdField = AddPlayerConfigField<FloatField, float>(fieldTemplate, importSettingsFoldout, 
+		    Contents.ReductionThreshold,
 		    (MeshSyncPlayerConfig config, float newValue) => { config.ReductionThreshold = newValue; }
 		);
-	    m_reductionEraseFlatCurves = AddField<Toggle,bool>(fieldTemplate, importSettingsFoldout, 
-		    "Reduction Erase Flat Curves",
+	    m_reductionEraseFlatCurves = AddPlayerConfigField<Toggle,bool>(fieldTemplate, importSettingsFoldout, 
+		    Contents.ReductionEraseFlatCurves,
 		    (MeshSyncPlayerConfig config, bool newValue) => { config.ReductionEraseFlatCurves = newValue; }
 		);
-	    m_zUpCorrectionPopup = AddPopupField(fieldTemplate, importSettingsFoldout, 
-		    "Z-Up correction", m_zUpCorrectionEnums,
+	    m_zUpCorrectionPopup = AddPlayerConfigPopupField(fieldTemplate, importSettingsFoldout, 
+		    Contents.ZUpCorrection, m_zUpCorrectionEnums,
 		    (MeshSyncPlayerConfig config, int newValue) => { config.ZUpCorrection = newValue; }
 	    );
 	    
 	    //Misc 
 	    Foldout miscSettingsFoldout = containerInstance.Query<Foldout>("MiscSettingsFoldout").First();
-	    m_syncMaterialListToggle = AddField<Toggle,bool>(fieldTemplate, miscSettingsFoldout, 
-		    "Sync Material List",
+	    m_syncMaterialListToggle = AddPlayerConfigField<Toggle,bool>(fieldTemplate, miscSettingsFoldout, 
+		    Contents.SyncMaterialList,
 		    (MeshSyncPlayerConfig config, bool newValue) => { config.SyncMaterialList = newValue; }
 	    );
-	    m_progressiveDisplayToggle = AddField<Toggle,bool>(fieldTemplate, miscSettingsFoldout, 
-		    "Progressive Display",
+	    m_progressiveDisplayToggle = AddPlayerConfigField<Toggle,bool>(fieldTemplate, miscSettingsFoldout, 
+		    Contents.ProgressiveDisplay,
 		    (MeshSyncPlayerConfig config, bool newValue) => { config.ProgressiveDisplay = newValue; }
 	    );
-	    m_loggingToggle = AddField<Toggle,bool>(fieldTemplate, miscSettingsFoldout, 
-		    "Logging",
+	    m_loggingToggle = AddPlayerConfigField<Toggle,bool>(fieldTemplate, miscSettingsFoldout, 
+		    Contents.Logging,
 		    (MeshSyncPlayerConfig config, bool newValue) => { config.Logging = newValue; }
 	    );
-	    m_profilingToggle = AddField<Toggle,bool>(fieldTemplate, miscSettingsFoldout, 
-		    "Profiling",
+	    m_profilingToggle = AddPlayerConfigField<Toggle,bool>(fieldTemplate, miscSettingsFoldout, 
+		    Contents.Profiling,
 		    (MeshSyncPlayerConfig config, bool newValue) => { config.Profiling = newValue; }
 	    );
 	    
 	    //Animation Tweak
 	    Foldout animationTweakSettingsFoldout = containerInstance.Query<Foldout>("AnimationTweakSettingsFoldout").First();
-	    m_animationTweakTimeScaleField = AddField<FloatField, float>(fieldTemplate, animationTweakSettingsFoldout, 
-		    "Time Scale",
+	    m_animationTweakTimeScaleField = AddPlayerConfigField<FloatField, float>(fieldTemplate, animationTweakSettingsFoldout, 
+		    Contents.TweakTimeScale,
 		    (MeshSyncPlayerConfig config, float newValue) => {
 			    config.GetAnimationTweakSettings().TimeScale = newValue;
 		    }
 	    );
-	    m_animationTweakTimeOffsetField = AddField<FloatField, float>(fieldTemplate, animationTweakSettingsFoldout, 
-		    "Time Offset",
+	    m_animationTweakTimeOffsetField = AddPlayerConfigField<FloatField, float>(fieldTemplate, animationTweakSettingsFoldout, 
+		    Contents.TweakTimeOffset,
 		    (MeshSyncPlayerConfig config, float newValue) => {
 			    config.GetAnimationTweakSettings().TimeOffset = newValue;
 		    }
 	    );
-	    m_animationTweakDropStepField = AddField<IntegerField, int>(fieldTemplate, animationTweakSettingsFoldout, 
-		    "Drop Step",
+	    m_animationTweakDropStepField = AddPlayerConfigField<IntegerField, int>(fieldTemplate, animationTweakSettingsFoldout, 
+		    Contents.TweakDropStep,
 		    (MeshSyncPlayerConfig config, int newValue) => {
 			    config.GetAnimationTweakSettings().DropStep = newValue;
 		    }
 	    );
-	    m_animationTweakReductionThresholdField = AddField<FloatField, float>(fieldTemplate, animationTweakSettingsFoldout, 
-		    "Reduction Threshold",
+	    m_animationTweakReductionThresholdField = AddPlayerConfigField<FloatField, float>(fieldTemplate, animationTweakSettingsFoldout, 
+		    Contents.TweakReductionThreshold,
 		    (MeshSyncPlayerConfig config, float newValue) => {
 			    config.GetAnimationTweakSettings().ReductionThreshold = newValue;
 		    }
 	    );
-	    m_animationTweakEraseFlatCurvesToggle = AddField<Toggle, bool>(fieldTemplate, animationTweakSettingsFoldout, 
-		    "Erase Flat Curves",
+	    m_animationTweakEraseFlatCurvesToggle = AddPlayerConfigField<Toggle, bool>(fieldTemplate, animationTweakSettingsFoldout, 
+		    Contents.TweakEraseFlatCurves,
 		    (MeshSyncPlayerConfig config, bool newValue) => {
 			    config.GetAnimationTweakSettings().EraseFlatCurves = newValue;
 		    }
@@ -163,10 +204,34 @@ internal class GeneralSettingsTab : IMeshSyncSettingsTab {
         root.Add(containerInstance);
     }
 
+	//Support Toggle, FloatField, etc
+	private F AddField<F,V>(VisualTreeAsset template, VisualElement parent, GUIContent content,
+		V initialValue, Action<V> onValueChanged) where F: VisualElement,INotifyValueChanged<V>, new()  
+	{
+		TemplateContainer templateInstance = template.CloneTree();
+		VisualElement     fieldContainer   = templateInstance.Query<VisualElement>("FieldContainer").First();
+		Label label = templateInstance.Query<Label>().First();
+		label.text    = content.text;
+		label.tooltip = content.tooltip;
+		
+		F field = new F();
+		field.AddToClassList("general-settings-field");
+		field.SetValueWithoutNotify(initialValue);
+		field.RegisterValueChangedCallback((ChangeEvent<V> changeEvent) => {
+		
+			onValueChanged(changeEvent.newValue);
+			MeshSyncRuntimeSettings.GetOrCreateSettings().SaveSettings();
+		});		
+		
+		fieldContainer.Add(field);
+		parent.Add(templateInstance);
+		return field;
+	}
+	
 //----------------------------------------------------------------------------------------------------------------------	
 
 	//Support Toggle, FloatField, etc
-	private F AddField<F,V>(VisualTreeAsset template, VisualElement parent, string text,
+	private F AddPlayerConfigField<F,V>(VisualTreeAsset template, VisualElement parent, GUIContent content,
 		Action<MeshSyncPlayerConfig,V> onValueChanged) where F: VisualElement,INotifyValueChanged<V>, new()  
 	{
 
@@ -174,7 +239,8 @@ internal class GeneralSettingsTab : IMeshSyncSettingsTab {
 		VisualElement fieldContainer = templateInstance.Query<VisualElement>("FieldContainer").First();
 //		F field = templateInstance.Query<F>().First();
 		Label label = templateInstance.Query<Label>().First();
-		label.text = text;
+		label.text = content.text;
+		label.tooltip = content.tooltip;
 		
 		F field = new F();
 		field.AddToClassList("general-settings-field");
@@ -187,7 +253,7 @@ internal class GeneralSettingsTab : IMeshSyncSettingsTab {
 			}
 			
 			onValueChanged(config, changeEvent.newValue);
-			MeshSyncProjectSettings.GetOrCreateSettings().SaveSettings();
+			MeshSyncRuntimeSettings.GetOrCreateSettings().SaveSettings();
 		});		
 		
 		fieldContainer.Add(field);
@@ -197,7 +263,7 @@ internal class GeneralSettingsTab : IMeshSyncSettingsTab {
 	}
 	
 //----------------------------------------------------------------------------------------------------------------------	
-	private PopupField<T> AddPopupField<T>(VisualTreeAsset template, VisualElement parent, string text,
+	private PopupField<T> AddPlayerConfigPopupField<T>(VisualTreeAsset template, VisualElement parent, GUIContent content,
 		List<T> options, Action<MeshSyncPlayerConfig,int> onValueChanged) 
 	{
 
@@ -207,7 +273,8 @@ internal class GeneralSettingsTab : IMeshSyncSettingsTab {
 		popupField.AddToClassList("general-settings-field");
 		
 		Label label = templateInstance.Query<Label>().First();
-		label.text = text;
+		label.text    = content.text;
+		label.tooltip = content.tooltip;
 		popupField.RegisterValueChangedCallback( ( ChangeEvent<T> changeEvent)  => {
 		
 			MeshSyncPlayerConfig config = popupField.userData as MeshSyncPlayerConfig;
@@ -217,7 +284,7 @@ internal class GeneralSettingsTab : IMeshSyncSettingsTab {
 			}
 			
 			onValueChanged(config, popupField.index);
-			MeshSyncProjectSettings.GetOrCreateSettings().SaveSettings();
+			MeshSyncRuntimeSettings.GetOrCreateSettings().SaveSettings();
 		});
 				
 		fieldContainer.Add(popupField);
@@ -246,8 +313,8 @@ internal class GeneralSettingsTab : IMeshSyncSettingsTab {
 //----------------------------------------------------------------------------------------------------------------------	
 
 	private void UpdatePlayerConfigUIElements(MeshSyncPlayerType playerType) {
-		MeshSyncProjectSettings projectSettings = MeshSyncProjectSettings.GetOrCreateSettings();
-		MeshSyncPlayerConfig config = projectSettings.GetDefaultPlayerConfig(playerType);
+		MeshSyncRuntimeSettings runtimeSettings = MeshSyncRuntimeSettings.GetOrCreateSettings();
+		MeshSyncPlayerConfig config = runtimeSettings.GetDefaultPlayerConfig(playerType);
 	
 		//sync
 		m_syncVisibilityToggle.SetValueWithoutNotify(config.SyncVisibility);
@@ -293,6 +360,7 @@ internal class GeneralSettingsTab : IMeshSyncSettingsTab {
 //----------------------------------------------------------------------------------------------------------------------
 	
 	private IntegerField m_serverPortField;
+	private Toggle m_allowPublicAccessToggle;
 	
 	//Sync Settings
 	private Toggle m_syncVisibilityToggle;
