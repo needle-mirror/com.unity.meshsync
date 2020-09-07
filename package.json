@@ -1,19 +1,19 @@
 {
   "name": "com.unity.meshsync",
   "description": "Working together with MeshSyncDCCPlugin, MeshSync provides features to reflect changes to models made in DCC tools into Unity in real time",
-  "version": "0.2.5-preview",
-  "unity": "2019.3",
+  "version": "0.3.2-preview",
+  "unity": "2019.4",
   "displayName": "MeshSync",
   "dependencies": {
     "com.unity.anime-toolbox": "0.1.6-preview",
     "com.unity.sharp-zip-lib": "1.2.2-preview"
   },
   "upmCi": {
-    "footprint": "d357fce552d327f511b51880a2f06b2e457a8b14"
+    "footprint": "d6598d410985a2ad93de2ece6a415484f2d61263"
   },
   "repository": {
     "url": "https://github.com/unity3d-jp/MeshSync.git",
     "type": "git",
-    "revision": "e4b717a0b10ccc8769be8536265aafa95a93364e"
+    "revision": "ca95e52402d2d91f36075eade95642359b498582"
   }
 }
