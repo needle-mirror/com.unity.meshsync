@@ -157,7 +157,7 @@ internal class DCCPluginDownloader  {
                 //Check MD5
                 string md5 = FileUtility.ComputeFileMD5(downloadInfo.LocalFilePath);
                 DCCPluginSignature signature = meta.GetSignature(Path.GetFileName(downloadInfo.LocalFilePath));
-                if (signature.MD5 != md5) {
+                if (null == signature || signature.MD5 != md5) {
                     ret = downloadInfo;
                 } else {
                     //The same file has been downloaded. Skip.
@@ -253,7 +253,7 @@ internal class DCCPluginDownloader  {
     private readonly List<string> m_finishedDCCPluginLocalPaths;
     
     
-    const string LATEST_KNOWN_VERSION = "0.3.2-preview";
+    const string LATEST_KNOWN_VERSION = "0.3.3-preview";
     private const string MESHSYNC_PACKAGE = "com.unity.meshsync";
     private const string MESHSYNC_DCC_PLUGIN_PACKAGE = "com.unity.meshsync-dcc-plugins";
 }
