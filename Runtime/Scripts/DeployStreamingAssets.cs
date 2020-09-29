@@ -10,7 +10,7 @@ namespace Unity.MeshSync {
         internal const string SERVER_ROOT_DIR_NAME = "MeshSyncServerRoot";
 
         internal static bool Deploy(bool overwrite = false) {
-            string serverRootSrcDir = Path.Combine("Packages","com.unity.meshsync","Editor",SERVER_ROOT_DIR_NAME);
+            string serverRootSrcDir = Path.Combine("Packages",MeshSyncConstants.PACKAGE_NAME,"Editor",SERVER_ROOT_DIR_NAME);
 
             string srcPath = Path.GetFullPath(serverRootSrcDir);
             if (!Directory.Exists(srcPath))
@@ -44,7 +44,7 @@ namespace Unity.MeshSync {
                 file.CopyTo(destPath, overwrite);
 
                 // ImportAsset() require relative path from Assets/
-                string importPath = NormalizeAssetPath(destPath);
+                string importPath = AssetUtility.NormalizeAssetPath(destPath);
                 AssetDatabase.ImportAsset(importPath);
             }
 
@@ -55,18 +55,6 @@ namespace Unity.MeshSync {
             return true;
         }
         
-//----------------------------------------------------------------------------------------------------------------------
-
-        //Normalize so that the path is relative to the Unity root project
-        static string NormalizeAssetPath(string path) {
-            if (string.IsNullOrEmpty(path))
-                return null;
-
-            if (path.StartsWith(Application.dataPath)) {
-                return path.Substring(Application.dataPath.Length - "Assets".Length);
-            }
-            return path;
-        }        
 
     }
 }
