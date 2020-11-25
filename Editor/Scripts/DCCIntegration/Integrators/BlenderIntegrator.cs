@@ -60,6 +60,7 @@ internal class BlenderIntegrator : BaseDCCIntegrator {
         }
       
         bool setupSuccessful = SetupAutoLoadPlugin(dccToolInfo.AppPath, 
+            dccToolInfo.DCCToolVersion,
             Path.GetFullPath(uninstallScriptPath), 
             Path.GetFullPath(installScriptPath)
         );
@@ -83,7 +84,8 @@ internal class BlenderIntegrator : BaseDCCIntegrator {
 //----------------------------------------------------------------------------------------------------------------------
 
     
-    bool SetupAutoLoadPlugin(string appPath, string uninstallScriptPath, string installScriptPath) {
+    bool SetupAutoLoadPlugin(string appPath, string dccToolVersion, 
+        string uninstallScriptPath, string installScriptPath) {
 
         try {
             if (!System.IO.File.Exists(appPath)) {
@@ -92,19 +94,30 @@ internal class BlenderIntegrator : BaseDCCIntegrator {
             }
 
             //Try to uninstall first. The uninstallation may have exceptions/error messages, but they can be ignored
-            System.Diagnostics.Process process = new System.Diagnostics.Process {
-                StartInfo = {
-                    FileName = appPath,
-                    // WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden,
-                    // CreateNoWindow = true,
-                    UseShellExecute = false,
-                    RedirectStandardError = true,
-                    Arguments = $"-b -P {uninstallScriptPath}"         //Execute batch mode
-                },
-                EnableRaisingEvents = true
-            };            
-            process.Start();
+            System.Diagnostics.Process process = DiagnosticsUtility.StartProcess(
+                appPath, 
+                $"-b -P {uninstallScriptPath}",                
+                /*useShellExecute=*/ false, /*redirectStandardError=*/ true                 
+            );
             process.WaitForExit();
+            
+            
+#if UNITY_EDITOR_OSX
+            //Delete plugin on mac to avoid errors of loading new plugin:
+            //Termination Reason: Namespace CODESIGNING, Code 0x2 
+            string installedPluginDir = Environment.GetFolderPath(Environment.SpecialFolder.Personal)
+                + $"/Library/Application Support/Blender/{dccToolVersion}/scripts/addons/MeshSyncClientBlender";
+            string[] files = System.IO.Directory.GetFiles(installedPluginDir, "*.so");
+            if (files.Length > 0) {
+                foreach (string binaryPluginFile in files) {
+                    try {
+                        File.Delete(binaryPluginFile);
+                    } catch (Exception e) {
+                        Debug.LogError("[MeshSync] Error when deleting previous plugin: " + binaryPluginFile);
+                    }
+                }
+            }
+#endif            
             
             //Install
             const int PYTHON_EXIT_CODE = 10;

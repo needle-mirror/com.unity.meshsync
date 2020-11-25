@@ -1,6 +1,26 @@
 # Changelog
 All notable changes to the MeshSync package will be documented in this file.
 
+## [0.5.4-preview] - 2020-11-25
+* fix: add MeshSyncConstants implementation to fix undefined symbol errors 
+
+## [0.5.3-preview] - 2020-11-20
+* fix: update the source of ISPC library and update to use ISPC 1.14.1
+
+## [0.5.2-preview] - 2020-11-19
+* fix: remove "-Wl,--no-undefined" linker flag from MeshUtils plugin library
+
+## [0.5.1-preview] - 2020-11-18
+* chore: make plugin project dependencies explicit and remove msEnableZSTD preprocessor directive
+
+## [0.5.0-preview] - 2020-11-17
+* feat: add a button to launch DCC tool in the Preferences page 
+* feat: notify users to restart Unity after upgrading MeshSync for Unity 2020.2+
+* fix: misleading plugin installation info for multiple DCC Tools which have the same major version
+* fix: Blender plugin installation on Mac OSX
+* doc: update Preferences doc 
+* chore: use com.unity.anime-toolbox@0.2.0-preview
+
 ## [0.4.0-preview] - 2020-09-29
 * feat: add support for Blender 2.90
 * feat: split ProjectSettings to Server tab and SceneCache tab
