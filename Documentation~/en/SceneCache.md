@@ -1,21 +1,29 @@
 # Scene Cache
-Scene Cache is a mechanism that saves every frame in the scene on the DCC tool side to a file and plays it back with Unity.  
-The goal is to reproduce DCC models, cameras and animations precisely at high speed.
 
-In that sense, SceneCache is very similar to Alembic. The biggest difference however, is the playback speed as SceneCache is several times faster than the Alembic playback with [AlembicForUnity](https://docs.unity3d.com/Packages/com.unity.formats.alembic@latest/index.html).  
-In addition, SceneCache supports several elements which are not supported in Alembic, such as materials, and depending on the DCC tool, SceneCache may be able to reproduce scenes more precisely.  
-(For Example: 3ds max's standard Alembic exporter does not support the export of meshes for rendering, but SceneCache supports it.)
+Scene Cache is a feature to playback all frames of an *.sc* file that 
+was exported using [MeshSyncDCCPlugins](https://github.com/Unity-Technologies/MeshSyncDCCPlugins)
+installed in a DCC Tool.   
+This functionality is very similar to [AlembicForUnity](https://docs.unity3d.com/Packages/com.unity.formats.alembic@latest/index.html),
+but it has the following differences:
 
-On the downside, SceneCache sacrifices portability as the playback is only possible with Unity at the moment, and there is no guarantee of file compatibility among different Unity versions, so re-export may be required to use the same files with a different Unity version.
+1. Scene Cache is designed to playback frames precisely with high performance.
+2. Scene Cache supports material export/import
+3. Unlike Alembic, *.sc* files are only playable in Unity.
 
+## How to use
 
-# How to use
-
-From the menu, select Game Object-> MeshSync-> Create Cache Player, and then select the *.sc* file exported by the DCC tool.  
-This will automatically create a playback object.
+From the menu, select **Game Object > MeshSync > Create Cache Player**, 
+and then select the *.sc* file exported by the DCC tool.  
+This will automatically create a GameObject with 
+[SceneCachePlayer](#scene-cache-player) component, 
+which will be played automatically in PlayMode.
 
 ![Menu](../images/MenuCreateCachePlayer.png)
 
+Normally, the playback is controlled using an 
+[*Animator*](https://docs.unity3d.com/ScriptReference/Animator.html) with an 
+[*AnimationClip*](https://docs.unity3d.com/ScriptReference/AnimationClip.html), but 
+we can also control the playback of [Scene Cache in Timeline](SceneCacheInTimeline.md).
 
 ## Scene Cache Player
 
@@ -23,9 +31,6 @@ This will automatically create a playback object.
 
 This component handles the playback. 
 There are many settings which are in common with [MeshSyncServer](MeshSyncServer.md).
-
-When "Create Cache Player" on the menu is selected, an AnimationClip, which also handles the animation Playback, will be created and tied to the SceneCachePlayer.  
-We can place this clip on an AnimationTrack to play it in Timeline.
 
 - **Cache File Path**  
 Initially, the path to the *.sc* file is absolute, and therefore the animation can only be played on that PC.  

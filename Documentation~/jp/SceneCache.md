@@ -1,29 +1,34 @@
 # Scene Cache
-Scene Cache は DCC 上のシーンを各フレームそのままファイルに保存しておき、Unity で再生する仕組みです。  
-DCC 側のモデル、カメラ、アニメーションを忠実に、かつ高速に再生することを目的としています。  
 
-非常に近いものとして Alembic が挙げられます。Alembic との最大の違いは再生速度です。[AlembicForUnity](https://docs.unity3d.com/Packages/com.unity.formats.alembic@latest/index.html) で Alembic 再生するよりも SceneCache の方が数倍速くなります。  
-他にはマテリアルのサポートなど Alembic にはない要素が追加されていたり、DCC ツールによっては SceneCache の方が再現度が高いこともあります。  
-(例：3ds max の標準の Alembic exporter はレンダリング用 Mesh のエクスポートはサポートしていませんが、SceneCache は可能です)  
+Scene Cache は、DCC ツールにインストールされた
+[MeshSyncDCCPlugins](https://github.com/Unity-Technologies/MeshSyncDCCPlugins)
+を使ってエクスポートされた *.sc* ファイルの全フレームを再生するための機能です。  
+この機能は [AlembicForUnity](https://docs.unity3d.com/Packages/com.unity.formats.alembic@latest/index.html)
+と非常によく似ていますが、下記の違いがあります：
 
-代償として、現状 Unity でしか再生できない、バージョンアップで互換性が失われて再エクスポートが必要になる可能性が高い等、汎用性をほぼ捨てているという欠点もあります。
-
+1. Scene Cache は、全フレームを正確にかつ高速に再生するように設計されています。
+1. Scene Cache はマテリアルのエクスポート・インポートをサポートします。
+1. Alembic とは異なり、*.sc* ファイルは Unity でのみ再生できます。
 
 # 使い方
 
-Game Object -> MeshSync -> Create Cache Player メニューを選択し、DCC 側でエクスポートした *.sc* ファイルを選択し、再生用オブジェクトを作成します。
+**Game Object > MeshSync > Create Cache Player** メニューを選択し、
+DCC 側でエクスポートした *.sc* ファイルを選択します。
+これによって、[SceneCachePlayer](#scene-cache-player)
+コンポネントが入っている GameObject が生成され、PlayMode の時に自動的に再生されます。
 
 ![Menu](../images/MenuCreateCachePlayer.png)
 
+通常、Scene Cache の再生は 
+[*Animator*](https://docs.unity3d.com/ScriptReference/Animator.html) と
+[*AnimationClip*](https://docs.unity3d.com/ScriptReference/AnimationClip.html)
+で制御されていますが、[タイムライン上](SceneCacheInTimeline.md)でも再生を制御することができます。
 
 ## Scene Cache Player
 
 ![SceneCachePlayer](../images/SceneCachePlayer.png)
 
 このコンポーネントが再生を担当します。多くの設定は [MeshSyncServer](MeshSyncServer.md) と共通です。
-
-"Create Cache Player" メニューを選択した時、同時に アニメーションの再生を担当する AnimationClip が作成されて SceneCachePlayer に結び付いています。  
-Timeline で再生する場合も、この clip を AnimationTrack に配置することで対応できます。
 
 - **Cache File Path**  
 初期時に、 *.sc* ファイルへのパスが絶対パスになっており、その PC でしか再生できません。  
