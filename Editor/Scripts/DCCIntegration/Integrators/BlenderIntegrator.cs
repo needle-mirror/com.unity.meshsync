@@ -1,6 +1,7 @@
 ﻿using System;
 using System.IO;
 using JetBrains.Annotations;
+using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
 
@@ -39,23 +40,15 @@ internal class BlenderIntegrator : BaseDCCIntegrator {
     }
 
 //----------------------------------------------------------------------------------------------------------------------
-    protected override bool ConfigureDCCToolV(DCCToolInfo dccToolInfo, string pluginFileNameWithoutExt, 
-        string extractedTempPath) 
-    {        
-        //Go down one folder
-        string extractedPath = null;
-        foreach (string dir in Directory.EnumerateDirectories(extractedTempPath)) {
-            extractedPath = dir;
-            break;
-        }
-
-        if (string.IsNullOrEmpty(extractedPath))
-            return false;
+    protected override bool ConfigureDCCToolV(DCCToolInfo dccToolInfo, string srcPluginRoot, 
+        string tempPath) 
+    {
+        Assert.IsTrue(Directory.Exists(srcPluginRoot));
 
         //Must use '/' for the pluginFile which is going to be inserted into the template
         string ver = dccToolInfo.DCCToolVersion;
 
-        string[] pluginFiles = Directory.GetFiles(extractedPath, $"blender-{ver}*.zip");
+        string[] pluginFiles = Directory.GetFiles(srcPluginRoot, $"blender-{ver}*.zip");
         if (pluginFiles.Length <= 0) {
             return false;            
         }
@@ -73,7 +66,7 @@ internal class BlenderIntegrator : BaseDCCIntegrator {
         //Replace the path in the template with actual path.
         string installScriptFormat = File.ReadAllText(templatePath);
         string installScript = String.Format(installScriptFormat,pluginFile);
-        string installScriptPath = Path.Combine(extractedTempPath, $"InstallBlenderPlugin_{ver}.py");
+        string installScriptPath = Path.Combine(tempPath, $"InstallBlenderPlugin_{ver}.py");
         File.WriteAllText(installScriptPath, installScript);
         
         //Prepare remove script to remove old plugin
@@ -130,7 +123,7 @@ internal class BlenderIntegrator : BaseDCCIntegrator {
             
             //Install
             const int PYTHON_EXIT_CODE = 10;
-            process.StartInfo.Arguments = $"-b -P {installScriptPath} --python-exit-code {PYTHON_EXIT_CODE}";
+            process.StartInfo.Arguments = $"-b -P \"{installScriptPath}\" --python-exit-code {PYTHON_EXIT_CODE}";
             process.Start();
             process.WaitForExit();
             int exitCode = process.ExitCode;
