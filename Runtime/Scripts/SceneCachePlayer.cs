@@ -26,13 +26,6 @@ internal class SceneCachePlayer : MeshSyncPlayer {
         One = 1,
     }
     
-    //[TODO-sin: 2020-9-25] Move to another package?
-    private enum LogType {
-        DEBUG,
-        WARNING,
-        ERROR,
-    }
-    
     #endregion
 
 
@@ -169,19 +162,24 @@ internal class SceneCachePlayer : MeshSyncPlayer {
         
         return true;
     }
+    
+
+    private SceneData GetLastScene() {
+        if (m_sceneCache)
+            return m_sceneCache.GetSceneByTime(m_timePrev, m_interpolation);
+        return default(SceneData);
+    }
+    
 #endif //UNITY_EDITOR    
 
-    private bool ReopenCache() {
-        Assert.IsFalse(string.IsNullOrEmpty(m_sceneCacheFilePath));
-        return OpenCacheInternal(m_sceneCacheFilePath);
-    }
+//----------------------------------------------------------------------------------------------------------------------    
 
     private bool OpenCacheInternal(string path) {
         CloseCache();
 
         m_sceneCache = SceneCacheData.Open(path);
         if (!m_sceneCache) {
-            Log($"SceneCachePlayer: cache open failed ({path})", LogType.ERROR);
+            Debug.LogError($"SceneCachePlayer: cache open failed ({path})");
             return false;            
         }
         
@@ -190,14 +188,18 @@ internal class SceneCachePlayer : MeshSyncPlayer {
 #if UNITY_EDITOR
         SetSortEntities(true);
 #endif
-        Log($"SceneCachePlayer: cache opened ({path})", LogType.DEBUG);
+        LogDebug($"SceneCachePlayer: cache opened ({path})");
+
+        //[Note-sin: 2021-7-19] Time/Frame 0 must be loaded first, because the data of other frames might contain "No change from frame 0" 
+        LoadSceneCacheToScene(0, m_interpolation);
+        
         return true;
     }
     
     internal void CloseCache() {
         if (m_sceneCache) {
             m_sceneCache.Close();
-            Log($"SceneCachePlayer: cache closed ({m_sceneCacheFilePath})");
+            LogDebug($"SceneCachePlayer: cache closed ({m_sceneCacheFilePath})");
         }
         m_timePrev = -1;
     }
@@ -262,6 +264,7 @@ internal class SceneCachePlayer : MeshSyncPlayer {
 
     private void UpdatePlayer(bool updateNonMaterialAssets) {
 
+
         if (m_timeUnit == TimeUnit.Frames) {
             int offset = (int)m_baseFrame;
             m_frame = Mathf.Clamp(m_frame, offset, frameCount + offset);
@@ -273,48 +276,48 @@ internal class SceneCachePlayer : MeshSyncPlayer {
         }
         
         if (m_time != m_timePrev) {
-            m_timePrev = m_time;
-            m_sceneCache.preloadLength = m_preloadLength;
-#if UNITY_EDITOR
-            ulong sceneGetBegin = Misc.GetTimeNS();
-#endif
-            // get scene
-            SceneData scene = m_sceneCache.GetSceneByTime(m_time, m_interpolation);
-#if UNITY_EDITOR
-            m_dbgSceneGetTime = Misc.NS2MS(Misc.GetTimeNS() - sceneGetBegin);
-#endif
-
-            if (scene) {
-#if UNITY_EDITOR
-                ulong sceneUpdateBegin = Misc.GetTimeNS();
-#endif
-                // update scene
-                this.BeforeUpdateScene();
-                this.UpdateScene(scene, updateNonMaterialAssets);
-                this.AfterUpdateScene();
-#if UNITY_EDITOR
-                SetSortEntities(false);
-
-                if (m_config.Profiling) {
-                    m_dbgSceneUpdateTime = Misc.NS2MS(Misc.GetTimeNS() - sceneUpdateBegin);
-                    UpdateProfileReport(scene);
-                }
-#endif
-            }
+            LoadSceneCacheToScene(m_time, updateNonMaterialAssets);
         } else if(m_sceneCache.preloadLength != m_preloadLength) {
             m_sceneCache.preloadLength = m_preloadLength;
             m_sceneCache.Preload(m_sceneCache.GetFrame(m_time));
         }
 
     }
-
-    public SceneData GetLastScene() {
-        if (m_sceneCache)
-            return m_sceneCache.GetSceneByTime(m_timePrev, m_interpolation);
-        return default(SceneData);
-    }
     #endregion
-   
+
+
+    void LoadSceneCacheToScene(float time, bool updateNonMaterialAssets) {
+        m_timePrev = m_time = time;
+        m_sceneCache.preloadLength = m_preloadLength;
+#if UNITY_EDITOR
+        ulong sceneGetBegin = Misc.GetTimeNS();
+#endif
+        // get scene
+        SceneData scene = m_sceneCache.GetSceneByTime(m_time, m_interpolation);
+#if UNITY_EDITOR
+        m_dbgSceneGetTime = Misc.NS2MS(Misc.GetTimeNS() - sceneGetBegin);
+#endif
+
+        if (scene) {
+#if UNITY_EDITOR
+            ulong sceneUpdateBegin = Misc.GetTimeNS();
+#endif
+            // update scene
+            this.BeforeUpdateScene();
+            this.UpdateScene(scene, updateNonMaterialAssets);
+            this.AfterUpdateScene();
+#if UNITY_EDITOR
+            SetSortEntities(false);
+
+            if (m_config.Profiling) {
+                m_dbgSceneUpdateTime = Misc.NS2MS(Misc.GetTimeNS() - sceneUpdateBegin);
+                UpdateProfileReport(scene);
+            }
+#endif
+        }
+        
+    }
+    
 //----------------------------------------------------------------------------------------------------------------------
 
     protected override void OnBeforeSerializeMeshSyncPlayerV() {
@@ -369,17 +372,11 @@ internal class SceneCachePlayer : MeshSyncPlayer {
     
 //----------------------------------------------------------------------------------------------------------------------
 
-    void Log(string logMessage, LogType logType = LogType.DEBUG) {
+    void LogDebug(string logMessage) {
         if (!m_config.Logging)
             return;
 
-        switch (logType) {
-            case LogType.DEBUG: Debug.Log(logMessage); break; 
-            case LogType.WARNING: Debug.LogWarning(logMessage); break; 
-            case LogType.ERROR: Debug.LogError(logMessage); break;
-            default: break;
-                
-        }        
+        Debug.Log(logMessage); 
     }
     
 //----------------------------------------------------------------------------------------------------------------------
@@ -406,10 +403,12 @@ internal class SceneCachePlayer : MeshSyncPlayer {
 
 //----------------------------------------------------------------------------------------------------------------------    
     protected override void OnEnable() {
+
+        
         base.OnEnable();
         m_animator = GetComponent<Animator>();
         if (!string.IsNullOrEmpty(m_sceneCacheFilePath)) {
-            ReopenCache();
+            OpenCacheInternal(m_sceneCacheFilePath);
         }
         
         if (!m_sceneCache)
@@ -428,7 +427,7 @@ internal class SceneCachePlayer : MeshSyncPlayer {
     // Update() is called *before* animation update.
     // in many cases m_time is controlled by animation system. so scene update must be handled in LateUpdate()
     void LateUpdate() {
-        UpdatePlayer( /*updateNonMaterialAssets = */ false);
+        UpdatePlayer( updateNonMaterialAssets: false);
     }
     #endregion
 
