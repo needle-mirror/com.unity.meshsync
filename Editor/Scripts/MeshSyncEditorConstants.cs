@@ -1,13 +1,15 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using Unity.FilmInternalUtilities.Editor;
+using UnityEngine;
 
 namespace Unity.MeshSync.Editor {
 
 internal class MeshSyncEditorConstants {
 
     internal const string   PACKAGE_NAME             = MeshSyncConstants.PACKAGE_NAME;
-    internal static readonly PackageVersion PACKAGE_VERSION = new PackageVersion(Lib.GetPluginVersion());
+    internal static readonly PackageVersion PACKAGE_VERSION = ParsePluginVersion(Lib.GetPluginVersion());
     
 
     //Project settings
@@ -26,10 +28,12 @@ internal class MeshSyncEditorConstants {
         { "maya2018", new DCCToolInfo(DCCToolType.AUTODESK_MAYA, "2018" ) },
         { "maya2019", new DCCToolInfo(DCCToolType.AUTODESK_MAYA, "2019" ) },
         { "maya2020", new DCCToolInfo(DCCToolType.AUTODESK_MAYA, "2020" ) },
+        { "maya2022", new DCCToolInfo(DCCToolType.AUTODESK_MAYA, "2022" ) },
         { "3ds Max 2017", new DCCToolInfo(DCCToolType.AUTODESK_3DSMAX, "2017" ) },
         { "3ds Max 2018", new DCCToolInfo(DCCToolType.AUTODESK_3DSMAX, "2018" ) },
         { "3ds Max 2019", new DCCToolInfo(DCCToolType.AUTODESK_3DSMAX, "2019" ) },
         { "3ds Max 2020", new DCCToolInfo(DCCToolType.AUTODESK_3DSMAX, "2020" ) },
+        { "3ds Max 2021", new DCCToolInfo(DCCToolType.AUTODESK_3DSMAX, "2021" ) },
 
 #if UNITY_EDITOR_WIN        
         { "Blender 2.83", new DCCToolInfo(DCCToolType.BLENDER, "2.83" ) },
@@ -72,15 +76,16 @@ internal class MeshSyncEditorConstants {
     //UIElements Main
     
     //Project Settings UIElements
-    internal static readonly string MAIN_PROJECT_SETTINGS_PATH            = ProjSettingsUIPath("ProjectSettings_Main");
-    internal static readonly string SERVER_SETTINGS_TAB_PATH              = ProjSettingsUIPath("ServerSettings_Tab");
-    internal static readonly string SCENE_CACHE_PLAYER_SETTINGS_TAB_PATH  = ProjSettingsUIPath("SceneCachePlayerSettings_Tab");
-    internal static readonly string TAB_BUTTON_TEMPLATE_PATH              = ProjSettingsUIPath("TabButtonTemplate");
-    internal static readonly string PROJECT_SETTINGS_FIELD_TEMPLATE_PATH  = ProjSettingsUIPath("ProjectSettingsFieldTemplate");
-    internal static readonly string MESHSYNC_PLAYER_CONFIG_CONTAINER_PATH = ProjSettingsUIPath("MeshSyncPlayerConfig_Container");
+    internal static readonly string MAIN_PROJECT_SETTINGS_PATH           = ProjSettingsUIPath("ProjectSettings_Main");
+    internal static readonly string SERVER_SETTINGS_TAB_PATH             = ProjSettingsUIPath("ServerSettings_Tab");
+    internal static readonly string SCENE_CACHE_PLAYER_SETTINGS_TAB_PATH = ProjSettingsUIPath("SceneCachePlayerSettings_Tab");
+    internal static readonly string TAB_BUTTON_TEMPLATE_PATH             = ProjSettingsUIPath("TabButtonTemplate");
+    internal static readonly string PROJECT_SETTINGS_FIELD_TEMPLATE_PATH = ProjSettingsUIPath("ProjectSettingsFieldTemplate");
+    internal static readonly string PROJECT_SETTINGS_STYLE_PATH          = ProjSettingsUIPath("ProjectSettings_Style");
 
-    internal static readonly string PROJECT_SETTINGS_STYLE_PATH           = ProjSettingsUIPath("ProjectSettings_Style");
-    
+    //Project Settings UIElements - Config    
+    internal static readonly string SERVER_CONFIG_CONTAINER_PATH             = ProjSettingsUIPath("ServerConfig_Container");
+    internal static readonly string SCENE_CACHE_PLAYER_CONFIG_CONTAINER_PATH = ProjSettingsUIPath("SceneCachePlayerConfig_Container");
     
     //User Settings UIElements
     internal static readonly string MAIN_USER_SETTINGS_PATH           = UserSettingsUIPath("UserSettings_Main");
@@ -110,6 +115,75 @@ internal class MeshSyncEditorConstants {
         return Path.Combine(MeshSyncEditorConstants.USER_SETTINGS_UIELEMENTS_PATH, uiElementRelativePath);
 
     }
+    
+    
+    //----------------------------------------------------------------------------------------------------------------------
+    
+    //[TODO-sin: 2021-9-15] Move to PackageVersion in FIU
+    private static PackageVersion ParsePluginVersion(string semanticVer) {
+        if (!TryParsePluginVersion(semanticVer, out PackageVersion packageVersion)) {
+            Debug.LogError($"MeshSync: Invalid plugin version {semanticVer}");
+        }
+        return packageVersion;
+    }
+
+    private static bool TryParsePluginVersion(string semanticVer, out PackageVersion packageVersion) {
+        packageVersion = new PackageVersion() {
+            Major = 0,
+            Minor = 0,
+            Patch = 0,
+        };
+        
+        string[] tokens = semanticVer.Split('.');
+        if (tokens.Length <= 2)
+            return false;
+
+        if (int.TryParse(tokens[0], out int major)) {
+            packageVersion.Major = major;
+        }
+
+        if (int.TryParse(tokens[1], out int minor)) {
+            packageVersion.Minor = minor;            
+        }
+
+        //Find patch and lifecycle
+        string[] patches = tokens[2].Split('-');
+        if (int.TryParse(patches[0], out int patch)) {
+            packageVersion.Patch = patch;                        
+        }
+               
+        PackageLifecycle lifecycle = PackageLifecycle.INVALID;
+        if (patches.Length > 1) {
+            string lifecycleStr = patches[1].ToLower();                    
+            switch (lifecycleStr) {
+                case "experimental": lifecycle = PackageLifecycle.EXPERIMENTAL; break;
+                case "preview"     : lifecycle = PackageLifecycle.PREVIEW; break;
+                case "pre"         : lifecycle = PackageLifecycle.PRERELEASE; break;
+                default: lifecycle             = PackageLifecycle.INVALID; break;
+            }
+            
+        } else {
+            lifecycle = PackageLifecycle.RELEASED; 
+            
+        }
+
+        packageVersion = new PackageVersion() {
+            Major     = major,
+            Minor     = minor,
+            Patch     = patch,
+            Lifecycle = lifecycle
+        };
+
+        const int METADATA_INDEX = 3;
+        if (tokens.Length > METADATA_INDEX) {
+            packageVersion.AdditionalMetadata = String.Join(".",tokens, METADATA_INDEX, tokens.Length-METADATA_INDEX);
+        }
+
+        return true;
+
+
+        
+    } 
     
     
 }    

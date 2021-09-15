@@ -65,10 +65,14 @@ internal class MeshSyncPlayerConfig {
     public bool ProgressiveDisplay = true;
     public bool Logging            = false;
     public bool Profiling          = false;
-
+    
 //----------------------------------------------------------------------------------------------------------------------    
     
     [SerializeField] AnimationTweakSettings m_animationTweakSettings;
-    [SerializeField] internal readonly int ClassVersion = 1;
+    
+#pragma warning disable 414           
+    [SerializeField] private readonly int m_meshSyncPlayerConfigVersion = 1;
+#pragma warning restore 414    
+    
 }
 } //end namespace

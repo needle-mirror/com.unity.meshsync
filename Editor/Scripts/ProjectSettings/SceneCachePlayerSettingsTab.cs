@@ -1,3 +1,4 @@
+using NUnit.Framework;
 using Unity.FilmInternalUtilities;
 using Unity.FilmInternalUtilities.Editor;
 using UnityEditor;
@@ -15,6 +16,8 @@ internal class SceneCachePlayerSettingsTab : IMeshSyncSettingsTab {
 
 //----------------------------------------------------------------------------------------------------------------------        
     public void Setup(VisualElement root) {
+        Assert.IsNotNull(root);
+        
         VisualTreeAsset tab = UIElementsEditorUtility.LoadVisualTreeAsset(Constants.SCENE_CACHE_PLAYER_SETTINGS_TAB_PATH);
         TemplateContainer tabInstance = tab.CloneTree();
         
@@ -22,7 +25,7 @@ internal class SceneCachePlayerSettingsTab : IMeshSyncSettingsTab {
         
         m_generatedSCResPathTextField	 = tabInstance.Query<TextField>("GeneratedSCResPathText").First();
         m_generatedSCResPathTextField.RegisterValueChangedCallback((ChangeEvent<string> changeEvent) => {
-            MeshSyncRuntimeSettings settings = MeshSyncRuntimeSettings.GetOrCreateSettings();
+            MeshSyncProjectSettings settings = MeshSyncProjectSettings.GetOrCreateSettings();
             settings.SetSceneCacheOutputPath(changeEvent.newValue);
             settings.SaveSettings();
         });        
@@ -55,7 +58,7 @@ internal class SceneCachePlayerSettingsTab : IMeshSyncSettingsTab {
             return;            
         }        
 
-        MeshSyncRuntimeSettings settings = MeshSyncRuntimeSettings.GetOrCreateSettings();
+        MeshSyncProjectSettings settings = MeshSyncProjectSettings.GetOrCreateSettings();
         
         path = AssetUtility.NormalizeAssetPath(path);		
         settings.SetSceneCacheOutputPath(path);
@@ -66,7 +69,7 @@ internal class SceneCachePlayerSettingsTab : IMeshSyncSettingsTab {
 //----------------------------------------------------------------------------------------------------------------------
 
     void RefreshSettings() {
-        MeshSyncRuntimeSettings settings = MeshSyncRuntimeSettings.GetOrCreateSettings();
+        MeshSyncProjectSettings settings = MeshSyncProjectSettings.GetOrCreateSettings();
         m_generatedSCResPathTextField.value = settings.GetSceneCacheOutputPath();		
     }
 

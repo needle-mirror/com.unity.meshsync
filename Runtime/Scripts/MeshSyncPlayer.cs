@@ -151,7 +151,8 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
     protected void SetSaveAssetsInScene(bool saveAssetsInScene) { m_saveAssetsInScene = saveAssetsInScene; }
 
     protected void MarkMeshesDynamic(bool markMeshesDynamic) { m_markMeshesDynamic = markMeshesDynamic; }
-  
+
+    internal void EnableKeyValuesSerialization(bool kvEnabled) { m_keyValuesSerializationEnabled = kvEnabled;}
 
     internal MeshSyncPlayerConfig GetConfig() { return m_config; }
 
@@ -237,6 +238,10 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
     /// </summary>
     public void OnBeforeSerialize() {
         OnBeforeSerializeMeshSyncPlayerV();
+
+        if (!m_keyValuesSerializationEnabled)
+            return;
+        
         SerializeDictionary(m_clientObjects, ref m_clientObjects_keys, ref m_clientObjects_values);
         SerializeDictionary(m_hostObjects, ref m_hostObjects_keys, ref m_hostObjects_values);
         SerializeDictionary(m_objIDTable, ref m_objIDTable_keys, ref m_objIDTable_values);
@@ -404,52 +409,9 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
         return ret;
     }
 
-    internal Transform FindOrCreateObjectByPath(string path, bool createIfNotExist, ref bool created)
-    {
-        string[] names = path.Split('/');
-        Transform t = m_rootObject;
-        foreach (string name in names)
-        {
-            if (name.Length == 0)
-                continue;
-            t = FindOrCreateObjectByName(t, name, createIfNotExist, ref created);
-            if (t == null)
-                break;
-        }
-        return t;
-    }
+//----------------------------------------------------------------------------------------------------------------------    
 
-    internal Transform FindOrCreateObjectByName(Transform parent, string name, bool createIfNotExist, ref bool created)
-    {
-        Transform ret = null;
-        if (parent == null)
-        {
-            GameObject[] roots = SceneManager.GetActiveScene().GetRootGameObjects();
-            foreach (GameObject go in roots)
-            {
-                if (go.name == name)
-                {
-                    ret = go.GetComponent<Transform>();
-                    break;
-                }
-            }
-        } else {
-            ret = parent.Find(name);
-        }
-
-        if (createIfNotExist && ret == null) {
-            GameObject go = new GameObject();
-            go.name = name;
-            ret = go.GetComponent<Transform>();
-            if (parent != null)
-                ret.SetParent(parent, false);
-            created = true;
-        }
-        return ret;
-    }
-
-    internal static Material CreateDefaultMaterial()
-    {
+    private static Material CreateDefaultMaterial() {
         // prefer non Standard shader because it will be pink in HDRP
         Shader shader = Shader.Find("HDRP/Lit");
         if (shader == null)
@@ -585,15 +547,15 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
                 if (rec.bonePaths != null && rec.bonePaths.Length > 0)
                 {
                     int boneCount = rec.bonePaths.Length;
-                    bool dummy = false;
 
                     Transform[] bones = new Transform[boneCount];
                     for (int bi = 0; bi < boneCount; ++bi)
-                        bones[bi] = FindOrCreateObjectByPath(rec.bonePaths[bi], false, ref dummy);
+                        bones[bi] = GameObjectUtility.FindByPath(m_rootObject, rec.bonePaths[bi]);
 
                     Transform root = null;
                     if (!string.IsNullOrEmpty(rec.rootBonePath))
-                        root = FindOrCreateObjectByPath(rec.rootBonePath, false, ref dummy);
+                        root = GameObjectUtility.FindByPath(m_rootObject, rec.rootBonePath); 
+                    
                     if (root == null && boneCount > 0)
                     {
                         // find root bone
@@ -1326,8 +1288,7 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
             }
             
             if (rec == null) {
-                bool created = false;
-                trans = FindOrCreateObjectByPath(path, true, ref created);
+                trans = GameObjectUtility.FindOrCreateByPath(m_rootObject, path, false);
                 rec = new EntityRecord {
                     go = trans.gameObject,
                     trans = trans,
@@ -1596,8 +1557,7 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
 
     void UpdateConstraint(ConstraintData data)
     {
-        bool dummy = false;
-        Transform trans = FindOrCreateObjectByPath(data.path, true, ref dummy);
+        Transform trans = GameObjectUtility.FindOrCreateByPath(m_rootObject, data.path, false);
         if (trans == null)
             return;
 
@@ -1607,7 +1567,7 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
                 c.AddSource(new ConstraintSource());
             for (int si = 0; si < ns; ++si) {
                 ConstraintSource s = c.GetSource(si);
-                s.sourceTransform = FindOrCreateObjectByPath(data.GetSourcePath(si), true, ref dummy);
+                s.sourceTransform = GameObjectUtility.FindOrCreateByPath(m_rootObject, data.GetSourcePath(si), false);
             }
         };
 
@@ -1677,8 +1637,7 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
                 target = rec.trans;
             if (target == null)
             {
-                bool dummy = false;
-                target = FindOrCreateObjectByPath(path, true, ref dummy);
+                target = GameObjectUtility.FindOrCreateByPath(m_rootObject, path, false);
                 if (target == null)
                     return;
             }
@@ -1836,45 +1795,42 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
     #endregion
 
     #region Tools
-    internal bool ApplyMaterialList(MaterialList ml)
+
+    private bool ApplyMaterialList(MaterialList ml)
     {
         if (ml == null)
             return false;
 
-        if (ml.materials != null || ml.materials.Count != 0)
-        {
+        List<MaterialHolder> mats = ml.materials;
+        if (mats != null && mats.Count != 0) {
             bool updated = false;
             int materialCount = Mathf.Min(m_materialList.Count, ml.materials.Count);
             for (int mi = 0; mi < materialCount; ++mi)
             {
                 MaterialHolder src = ml.materials[mi];
-                if (src.material != null)
-                {
-                    MaterialHolder dst = m_materialList.Find(a => a.id == src.id);
-                    if (dst != null)
-                    {
-                        dst.material = src.material;
-                        updated = true;
-                    }
-                }
+                if (src.material == null) 
+                    continue;
+                MaterialHolder dst = m_materialList.Find(a => a.id == src.id);
+                if (dst == null) 
+                    continue;
+                dst.material = src.material;
+                updated = true;
             }
             if (updated)
                 ReassignMaterials();
         }
 
-        if (ml.nodes != null)
-        {
-            foreach (MaterialList.Node node in ml.nodes)
-            {
-                bool dummy = false;
-                Transform trans = FindOrCreateObjectByPath(node.path, false, ref dummy);
-                if (trans != null)
-                {
-                    Renderer renderer = trans.GetComponent<Renderer>();
-                    if (renderer != null)
-                        renderer.sharedMaterials = node.materials;
-                }
-            }
+        if (ml.nodes == null) 
+            return true;
+        
+        foreach (MaterialList.Node node in ml.nodes) {
+            Transform trans = GameObjectUtility.FindByPath(m_rootObject, node.path);
+            if (trans == null) 
+                continue;
+                
+            Renderer r = trans.GetComponent<Renderer>();
+            if (r != null)
+                r.sharedMaterials = node.materials;
         }
 
         return true;
@@ -2227,9 +2183,10 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
     bool                  m_recordAssignMaterials = false;
 #endif
 
-    private bool m_saveAssetsInScene     = true;
-    private bool m_markMeshesDynamic     = false;
-    private bool m_needReassignMaterials = false;
+    private bool m_saveAssetsInScene            = true;
+    private bool m_markMeshesDynamic            = false;
+    private bool m_needReassignMaterials        = false;
+    private bool m_keyValuesSerializationEnabled = true;
 
     private   Dictionary<string, EntityRecord> m_clientObjects = new Dictionary<string, EntityRecord>();
     protected Dictionary<int, EntityRecord>    m_hostObjects   = new Dictionary<int, EntityRecord>();
