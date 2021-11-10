@@ -5,23 +5,30 @@ using Unity.FilmInternalUtilities;
 using UnityEngine;
 using UnityEngine.Assertions;
 using UnityEngine.Serialization;
+
 #if UNITY_EDITOR
 using UnityEditor;
+using Unity.FilmInternalUtilities.Editor;
 #endif
 
 namespace Unity.MeshSync
 {
 
+
+/// <summary>
+/// SceneCachePlayer controls the playback of an .sc file that has been exported
+/// using MeshSyncDCCPlugins installed in a DCC Tool.
+/// </summary>
 [RequireComponent(typeof(Animator))]
 [ExecuteInEditMode]
-internal class SceneCachePlayer : MeshSyncPlayer {
+public class SceneCachePlayer : BaseMeshSync {
     #region Types
-    public enum TimeUnit {
+    internal enum TimeUnit {
         Seconds,
         Frames,
     }
 
-    public enum BaseFrame {
+    internal enum BaseFrame {
         Zero = 0,
         One = 1,
     }
@@ -39,13 +46,40 @@ internal class SceneCachePlayer : MeshSyncPlayer {
     protected override void InitInternalV() {
         
     }
+
+    private protected override void UpdateMaterialAssetV(MaterialData materialData) {
+        
+        ModelImporterSettings modelImporterSettings = m_config.GetModelImporterSettings();
+
+        
+#if UNITY_EDITOR
+        //Get the settings from the SceneCacheImporter if not set to override
+        if (AssetImporter.GetAtPath(m_sceneCacheFilePath) is IHasModelImporterSettings importer 
+            && !m_overrideModelImporterSettings) 
+        {
+            modelImporterSettings = importer.GetModelImporterSettings();
+        } 
+#endif            
+        
+        UpdateMaterialAssetByDefault(materialData,  modelImporterSettings);
+    }
     
+//----------------------------------------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// Force SceneCache to be updated and loaded to scene.
+    /// </summary>
+    public void ForceUpdate() {
+        UpdatePlayer( updateNonMaterialAssets: false);        
+    }
     
 //----------------------------------------------------------------------------------------------------------------------
 
     internal string GetSceneCacheFilePath() { return m_sceneCacheFilePath; }
     internal bool IsSceneCacheOpened() { return m_sceneCache;}
 
+    internal override MeshSyncPlayerConfig GetConfigV() => m_config;
+    
     internal void SetAutoplay(bool autoPlay) {
         //[Note-sin: 2021-1-18] May be called before m_animator is initialized in Playmode.
         //It is expected that the animator was already disabled previously in EditMode though.
@@ -81,6 +115,11 @@ internal class SceneCachePlayer : MeshSyncPlayer {
     internal int GetPreloadLength() { return m_preloadLength;}
     internal void SetPreloadLength(int preloadLength) { m_preloadLength = preloadLength;}
 
+    internal bool IsModelImporterSettingsOverridden() => m_overrideModelImporterSettings;
+
+    internal void OverrideModelImporterSettings(bool overrideValue) {
+        m_overrideModelImporterSettings = overrideValue;
+    }
     
 //----------------------------------------------------------------------------------------------------------------------
     
@@ -118,16 +157,16 @@ internal class SceneCachePlayer : MeshSyncPlayer {
 
 //----------------------------------------------------------------------------------------------------------------------
     #region Properties
-    public int frameCount {
+    internal int frameCount {
         get { return m_sceneCache.sceneCount; }
     }
 
 #if UNITY_EDITOR
-    public bool foldCacheSettings {
+    internal bool foldCacheSettings {
         get { return m_foldCacheSettings; }
         set { m_foldCacheSettings = value; }
     }
-    public string dbgProfileReport {
+    internal string dbgProfileReport {
         get { return m_dbgProfileReport; }
     }
 #endif
@@ -137,15 +176,14 @@ internal class SceneCachePlayer : MeshSyncPlayer {
 
 #if UNITY_EDITOR    
     internal bool OpenCacheInEditor(string path) {
+        
+        string normalizedPath = System.IO.Path.GetFullPath(path).Replace('\\','/');
+        normalizedPath = AssetEditorUtility.NormalizePath(normalizedPath);
 
-        if (!OpenCacheInternal(path)) {
+        if (!OpenCacheInternal(normalizedPath)) {
             return false;
         }
         
-        //Initialization after opening a cache file
-        m_sceneCacheFilePath = System.IO.Path.GetFullPath(path).Replace('\\','/');
-        m_sceneCacheFilePath = AssetUtility.NormalizeAssetPath(m_sceneCacheFilePath);
-               
         UpdatePlayer(/* updateNonMaterialAssets = */ true);
         ExportMaterials(false, true);
         ResetTimeAnimation();
@@ -177,8 +215,9 @@ internal class SceneCachePlayer : MeshSyncPlayer {
             Debug.LogError($"SceneCachePlayer: cache open failed ({path})");
             return false;            
         }
-        
-        m_timeRange = m_sceneCache.timeRange;
+
+        m_sceneCacheFilePath = path;
+        m_timeRange= m_sceneCache.timeRange;
         
 #if UNITY_EDITOR
         SetSortEntities(true);
@@ -203,38 +242,56 @@ internal class SceneCachePlayer : MeshSyncPlayer {
 //----------------------------------------------------------------------------------------------------------------------
     
 #if UNITY_EDITOR
+
+    private RuntimeAnimatorController GetOrCreateAnimatorControllerWithClip() {
+
+        //paths
+        string assetsFolder   = GetAssetsFolder();
+        string goName         = gameObject.name;
+        string animPath       = $"{assetsFolder}/{goName}.anim";
+        string controllerPath = $"{assetsFolder}/{goName}.controller";
+
+        //reuse
+        if (null == m_animator.runtimeAnimatorController) { 
+            m_animator.runtimeAnimatorController = AssetDatabase.LoadAssetAtPath<RuntimeAnimatorController>(controllerPath);
+        } 
+        
+        RuntimeAnimatorController animatorController = m_animator.runtimeAnimatorController; 
+        if (animatorController != null) {
+            AnimationClip[] clips = animatorController.animationClips;
+            if (clips != null && clips.Length > 0) {
+                AnimationClip tmp = animatorController.animationClips[0];
+                if (tmp != null) {
+                    return animatorController;
+                }
+            }
+        }
+   
+        
+        AnimationClip clip = new AnimationClip();
+        Misc.OverwriteOrCreateAsset(clip, animPath);
+        Assert.IsNotNull(clip);
+
+        animatorController = UnityEditor.Animations.AnimatorController.CreateAnimatorControllerAtPathWithClip(controllerPath, clip);        
+        m_animator.runtimeAnimatorController = animatorController; 
+
+        return animatorController;
+    }
+    
+    
     internal bool ResetTimeAnimation() {
         if (m_sceneCache.sceneCount < 2)
             return false;
 
-        AnimationClip clip = null;
-        if (m_animator.runtimeAnimatorController != null) {
-            AnimationClip[] clips = m_animator.runtimeAnimatorController.animationClips;
-            if (clips != null && clips.Length > 0) {
-                AnimationClip tmp = m_animator.runtimeAnimatorController.animationClips[0];
-                if (tmp != null) {
-                    clip = tmp;
-                    Undo.RegisterCompleteObjectUndo(clip, "SceneCachePlayer");
-                }
-            }
-        }
+        RuntimeAnimatorController animatorController = GetOrCreateAnimatorControllerWithClip();
+        Assert.IsNotNull(animatorController);
+        Assert.IsNotNull(animatorController.animationClips);
+        Assert.IsTrue(animatorController.animationClips.Length > 0);
+        AnimationClip clip = animatorController.animationClips[0];
+        Assert.IsNotNull(clip);
 
-        if (null == clip) {
-            clip = new AnimationClip();
-
-            string assetsFolder = GetAssetsFolder();
-
-            string animPath       = string.Format("{0}/{1}.anim", assetsFolder, gameObject.name);
-            string controllerPath = string.Format("{0}/{1}.controller", assetsFolder, gameObject.name);
-            clip = Misc.SaveAsset(clip, animPath);
-            if (clip.IsNullRef()) {
-                Debug.LogError("[MeshSync] Internal error in initializing clip for SceneCache");
-                return false;
-                
-            }
-
-            m_animator.runtimeAnimatorController = UnityEditor.Animations.AnimatorController.CreateAnimatorControllerAtPathWithClip(controllerPath, clip);
-        }
+        Undo.RegisterCompleteObjectUndo(clip, "SceneCachePlayer");
+        
         float sampleRate = m_sceneCache.sampleRate;
         if (sampleRate > 0.0f)
             clip.frameRate = sampleRate;
@@ -321,19 +378,16 @@ internal class SceneCachePlayer : MeshSyncPlayer {
 
     protected override void OnAfterDeserializeMeshSyncPlayerV() {
 
-        if (m_version == CUR_SCENE_CACHE_PLAYER_VERSION)
+        if (m_sceneCachePlayerVersion == CUR_SCENE_CACHE_PLAYER_VERSION)
             return;
         
-        if (m_version < (int) SceneCachePlayerVersion.STRING_PATH_0_4_0) {
-            Assert.IsNotNull(m_cacheFilePath);           
-            m_sceneCacheFilePath = MeshSyncAssetUtility.NormalizeAssetPathInEditor(m_cacheFilePath.GetFullPath());
+#if UNITY_EDITOR
+        if (m_sceneCachePlayerVersion < (int) SceneCachePlayerVersion.NORMALIZED_PATH_0_9_2) {
+            m_sceneCacheFilePath = AssetEditorUtility.NormalizePath(m_sceneCacheFilePath);
         } 
-
-        if (m_version < (int) SceneCachePlayerVersion.NORMALIZED_PATH_0_9_2) {
-            m_sceneCacheFilePath = MeshSyncAssetUtility.NormalizeAssetPathInEditor(m_sceneCacheFilePath);
-        } 
+#endif        
         
-        m_version = CUR_SCENE_CACHE_PLAYER_VERSION;
+        m_sceneCachePlayerVersion = CUR_SCENE_CACHE_PLAYER_VERSION;
     }
     
 //----------------------------------------------------------------------------------------------------------------------
@@ -391,7 +445,8 @@ internal class SceneCachePlayer : MeshSyncPlayer {
     #region Events
 #if UNITY_EDITOR
     void Reset() {
-        m_config = MeshSyncProjectSettings.GetOrCreateSettings().GetDefaultSceneCachePlayerConfig();            
+        MeshSyncProjectSettings projectSettings = MeshSyncProjectSettings.GetOrCreateSettings(); 
+        m_config = new SceneCachePlayerConfig(projectSettings.GetDefaultSceneCachePlayerConfig());            
     }
 
     void OnValidate() {
@@ -435,7 +490,6 @@ internal class SceneCachePlayer : MeshSyncPlayer {
 //----------------------------------------------------------------------------------------------------------------------
     
     [SerializeField] string    m_sceneCacheFilePath = null; //The full path of the file. Use '/'
-    [SerializeField] DataPath  m_cacheFilePath = null; //OBSOLETE
     [SerializeField] TimeUnit  m_timeUnit      = TimeUnit.Seconds;
     [SerializeField] float     m_time;
     [SerializeField] bool      m_interpolation = false;
@@ -443,8 +497,13 @@ internal class SceneCachePlayer : MeshSyncPlayer {
     [SerializeField] int       m_frame         = 1;
     [SerializeField] int       m_preloadLength = 1;
 
+    [SerializeField] private SceneCachePlayerConfig m_config;
     
-    [HideInInspector][SerializeField] private int m_version = (int) CUR_SCENE_CACHE_PLAYER_VERSION;
+    //only used when the sceneCacheFilePath has a valid importer (under Assets)
+    [SerializeField] bool m_overrideModelImporterSettings = false;
+    
+    //Renamed in 0.10.x-preview
+    [FormerlySerializedAs("m_version")] [HideInInspector][SerializeField] private int m_sceneCachePlayerVersion = (int) CUR_SCENE_CACHE_PLAYER_VERSION;
     private const int CUR_SCENE_CACHE_PLAYER_VERSION = (int) SceneCachePlayerVersion.NORMALIZED_PATH_0_9_2;
         
     SceneCacheData m_sceneCache;

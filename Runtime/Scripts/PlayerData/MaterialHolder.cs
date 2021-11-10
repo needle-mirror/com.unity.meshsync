@@ -11,7 +11,12 @@ internal class MaterialHolder {
     public string   shader;
     public Color    color = Color.white;
     public Material material;
-    public int      materialIID;
+    
+    //[TODO-sin: 2021-11-4] Remove in 2022.
+    [Obsolete] public int  materialIID;
+    
+    public bool     ShouldApplyMaterialData = true;
+
 }
 
 } //end namespace

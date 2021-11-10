@@ -1,5 +1,4 @@
 using NUnit.Framework;
-using Unity.FilmInternalUtilities;
 using Unity.FilmInternalUtilities.Editor;
 using UnityEditor;
 using UnityEngine;
@@ -17,6 +16,7 @@ internal class SceneCachePlayerSettingsTab : IMeshSyncSettingsTab {
 //----------------------------------------------------------------------------------------------------------------------        
     public void Setup(VisualElement root) {
         Assert.IsNotNull(root);
+        root.Clear();
         
         VisualTreeAsset tab = UIElementsEditorUtility.LoadVisualTreeAsset(Constants.SCENE_CACHE_PLAYER_SETTINGS_TAB_PATH);
         TemplateContainer tabInstance = tab.CloneTree();
@@ -27,7 +27,7 @@ internal class SceneCachePlayerSettingsTab : IMeshSyncSettingsTab {
         m_generatedSCResPathTextField.RegisterValueChangedCallback((ChangeEvent<string> changeEvent) => {
             MeshSyncProjectSettings settings = MeshSyncProjectSettings.GetOrCreateSettings();
             settings.SetSceneCacheOutputPath(changeEvent.newValue);
-            settings.SaveSettings();
+            settings.Save();
         });        
         
         m_outputPathSelectButton = tabInstance.Query<Button>("OutputPathSelectButton").First();
@@ -37,7 +37,16 @@ internal class SceneCachePlayerSettingsTab : IMeshSyncSettingsTab {
         //MeshSyncPlayerConfig
         MeshSyncPlayerConfigSection section = new MeshSyncPlayerConfigSection(MeshSyncPlayerType.CACHE_PLAYER);	    
         section.Setup(content);
-                
+
+        Button resetButton = tabInstance.Query<Button>("ResetButton").First();
+        resetButton.clicked += () => {
+            MeshSyncProjectSettings projectSettings = MeshSyncProjectSettings.GetOrCreateSettings();
+            projectSettings.ResetDefaultSceneCachePlayerConfig();
+            projectSettings.Save();
+            Setup(root);
+        };
+       
+        
         root.Add(tabInstance);	    
     }
     
@@ -60,9 +69,9 @@ internal class SceneCachePlayerSettingsTab : IMeshSyncSettingsTab {
 
         MeshSyncProjectSettings settings = MeshSyncProjectSettings.GetOrCreateSettings();
         
-        path = AssetUtility.NormalizeAssetPath(path);		
+        path = AssetEditorUtility.NormalizePath(path);
         settings.SetSceneCacheOutputPath(path);
-        settings.SaveSettings();
+        settings.Save();
 
         RefreshSettings();
     }

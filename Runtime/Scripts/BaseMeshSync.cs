@@ -8,6 +8,9 @@ using UnityEngine.Animations;
 using Unity.Collections;
 using UnityEngine.Assertions;
 using System.IO;
+using JetBrains.Annotations;
+using Unity.FilmInternalUtilities;
+using Object = UnityEngine.Object;
 
 #if UNITY_EDITOR
 using UnityEditor;
@@ -54,10 +57,11 @@ internal delegate void DeleteEntityHandler(GameObject obj);
 //----------------------------------------------------------------------------------------------------------------------
 
 /// <summary>
-/// MeshSyncPlayer
+/// The base class of main MeshSync components (MeshSyncServer, SceneCachePlayer),
+/// which encapsulates common functionalities
 /// </summary>
 [ExecuteInEditMode]
-internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackReceiver {
+public abstract class BaseMeshSync : MonoBehaviour, ISerializationCallbackReceiver {
 
     
     #region EventHandler Declarations
@@ -108,7 +112,7 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
 
     internal void Init(string assetsFolder) {
         Assert.IsTrue(assetsFolder.StartsWith("Assets"));
-        m_assetsFolder = assetsFolder;
+        m_assetsFolder = assetsFolder.Replace('\\','/');
         m_rootObject   = gameObject.transform;
         
         m_materialList.Clear();
@@ -127,9 +131,6 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
 //----------------------------------------------------------------------------------------------------------------------
     
     #region Getter/Setter
-    internal static string GetPluginVersion() { return Lib.GetPluginVersion(); }
-
-    internal static int protocolVersion { get { return Lib.protocolVersion; } }
 
     internal string GetAssetsFolder() { return m_assetsFolder;}   
 
@@ -157,11 +158,7 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
 
     internal void EnableKeyValuesSerialization(bool kvEnabled) { m_keyValuesSerializationEnabled = kvEnabled;}
 
-    internal MeshSyncPlayerConfig GetConfig() { return m_config; }
-
-
-    internal bool GetUsePhysicalCameraParams() { return m_usePhysicalCameraParams;}
-    internal void SetUsePhysicalCameraParams(bool use) { m_usePhysicalCameraParams = use;}
+    internal abstract MeshSyncPlayerConfig GetConfigV();
 
     
     internal bool useCustomCameraMatrices
@@ -248,7 +245,8 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
         SerializeDictionary(m_clientObjects, ref m_clientObjects_keys, ref m_clientObjects_values);
         SerializeDictionary(m_hostObjects, ref m_hostObjects_keys, ref m_hostObjects_values);
         SerializeDictionary(m_objIDTable, ref m_objIDTable_keys, ref m_objIDTable_values);
-        
+
+        m_baseMeshSyncVersion = CUR_BASE_MESHSYNC_VERSION;
     }
 
 
@@ -260,16 +258,28 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
         DeserializeDictionary(m_hostObjects, ref m_hostObjects_keys, ref m_hostObjects_values);
         DeserializeDictionary(m_objIDTable, ref m_objIDTable_keys, ref m_objIDTable_values);
         
-        //[TODO-sin: 2020-9-24] Remove in MeshSync 2.0.0
-        //Convert old assets which are using DataPath to hold assetFolder.
-        string leaf = m_assetDir.GetLeaf();
-        if (!string.IsNullOrEmpty(leaf)) {
-            m_assetsFolder = $"Assets/{leaf}";
-        } 
-        
-        
-        
         OnAfterDeserializeMeshSyncPlayerV();
+
+        if (CUR_BASE_MESHSYNC_VERSION == m_baseMeshSyncVersion)
+            return;
+
+        if (m_baseMeshSyncVersion < (int) BaseMeshSyncVersion.INITIAL_0_10_0) {
+#pragma warning disable 612
+            foreach (MaterialHolder m in m_materialList) {
+                if (m.materialIID != 0) 
+                    continue;
+                
+                m.ShouldApplyMaterialData = false;
+            }
+
+            MeshSyncPlayerConfig config = GetConfigV();
+            config?.UsePhysicalCameraParams(m_usePhysicalCameraParams);
+#pragma warning restore 612
+
+        }
+        
+        m_baseMeshSyncVersion = CUR_BASE_MESHSYNC_VERSION;
+        
     }
     
     protected abstract void OnBeforeSerializeMeshSyncPlayerV();
@@ -280,16 +290,12 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
 
     #region Misc
     //[MethodImpl(MethodImplOptions.AggressiveInlining)]
-    protected bool Try(Action act)
-    {
-        try
-        {
+    protected bool Try(Action act) {
+        try {
             act.Invoke();
             return true;
-        }
-        catch (Exception e)
-        {
-            if (m_config.Logging)
+        } catch (Exception e) {
+            if (GetConfigV().Logging)
                 Debug.LogError(e);
             return false;
         }
@@ -304,22 +310,6 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
     }
     
 //----------------------------------------------------------------------------------------------------------------------    
-
-    // this function has a complex behavior to keep existing .meta:
-    //  if an asset already exists in assetPath, load it and copy the content of obj to it and replace obj with it.
-    //  otherwise obj is simply saved by AssetDatabase.CreateAsset().
-    private bool SaveAsset<T>(ref T obj, string assetPath) where T : UnityEngine.Object
-    {
-#if UNITY_EDITOR
-        T ret = Misc.SaveAsset(obj, assetPath);
-        if (ret != null)
-        {
-            obj = ret;
-            return true;
-        }
-#endif
-        return false;
-    }
 
     private bool IsAsset(UnityEngine.Object obj)
     {
@@ -349,11 +339,11 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
             return "/" + t.name;
     }
 
-    internal Texture2D FindTexture(int id)
+    private static Texture2D FindTexture(int id, List<TextureHolder> textureHolders)
     {
         if (id == Lib.invalidID)
             return null;
-        TextureHolder rec = m_textureList.Find(a => a.id == id);
+        TextureHolder rec = textureHolders.Find(a => a.id == id);
         return rec != null ? rec.texture : null;
     }
 
@@ -414,14 +404,24 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
 
 //----------------------------------------------------------------------------------------------------------------------    
 
-    private static Material CreateDefaultMaterial() {
+    private static Material CreateDefaultMaterial(string shaderName =null) {
+        
+        Shader shader = null;
+        if (!string.IsNullOrEmpty(shaderName)) {
+            shader = Shader.Find(shaderName); 
+        }
+            
+        if (shader == null) 
+        {            
 #if AT_USE_HDRP                
-        Shader shader = Shader.Find("HDRP/Lit");
+            shader = Shader.Find("HDRP/Lit");
 #elif AT_USE_URP
-        Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+            shader = Shader.Find("Universal Render Pipeline/Lit");
 #else 
-        Shader shader = Shader.Find("Standard");
+            shader = Shader.Find("Standard");
 #endif        
+        }
+        
         Assert.IsNotNull(shader);
         Material ret = new Material(shader);
         return ret;
@@ -443,7 +443,8 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
         onSceneUpdateBegin?.Invoke();
     }
 
-    protected void UpdateScene(SceneData scene, bool updateNonMaterialAssets) {
+    private protected void UpdateScene(SceneData scene, bool updateNonMaterialAssets) {
+        MeshSyncPlayerConfig  config = GetConfigV();
         // handle assets
         Try(() => {
             int numAssets = scene.numAssets;
@@ -452,7 +453,7 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
                 for (int i = 0; i < numAssets; ++i) {
                     AssetData asset = scene.GetAsset(i);
 
-                    //Only update MaterialAsset if specified
+                    //Only update non-MaterialAsset if specified
                     if (!updateNonMaterialAssets && asset.type != AssetType.Material)
                         continue;
                     
@@ -467,14 +468,14 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
                             UpdateTextureAsset((TextureData)asset);
                             break;
                         case AssetType.Material:
-                            UpdateMaterialAsset((MaterialData)asset);
+                            UpdateMaterialAssetV((MaterialData)asset);
                             break;
                         case AssetType.Animation:
-                            UpdateAnimationAsset((AnimationClipData)asset);
+                            UpdateAnimationAsset((AnimationClipData)asset, config);
                             save = true;
                             break;
                         default:
-                            if (m_config.Logging)
+                            if (config.Logging)
                                 Debug.Log("unknown asset: " + asset.name);
                             break;
                     }
@@ -494,19 +495,19 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
                 TransformData src = scene.GetEntity(i);
                 switch (src.entityType) {
                     case EntityType.Transform:
-                        dst = UpdateTransformEntity(src);
+                        dst = UpdateTransformEntity(src, config);
                         break;
                     case EntityType.Camera:
-                        dst = UpdateCameraEntity((CameraData)src);
+                        dst = UpdateCameraEntity((CameraData)src, config);
                         break;
                     case EntityType.Light:
-                        dst = UpdateLightEntity((LightData)src);
+                        dst = UpdateLightEntity((LightData)src, config);
                         break;
                     case EntityType.Mesh:
-                        dst = UpdateMeshEntity((MeshData)src);
+                        dst = UpdateMeshEntity((MeshData)src, config);
                         break;
                     case EntityType.Points:
-                        dst = UpdatePointsEntity((PointsData)src);
+                        dst = UpdatePointsEntity((PointsData)src, config);
                         break;
                 }
 
@@ -523,7 +524,7 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
         });
         
 #if UNITY_EDITOR
-        if (m_config.ProgressiveDisplay)
+        if (config.ProgressiveDisplay)
             ForceRepaint();
 #endif
     }
@@ -555,11 +556,11 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
 
                     Transform[] bones = new Transform[boneCount];
                     for (int bi = 0; bi < boneCount; ++bi)
-                        bones[bi] = GameObjectUtility.FindByPath(m_rootObject, rec.bonePaths[bi]);
+                        bones[bi] = FilmInternalUtilities.GameObjectUtility.FindByPath(m_rootObject, rec.bonePaths[bi]);
 
                     Transform root = null;
                     if (!string.IsNullOrEmpty(rec.rootBonePath))
-                        root = GameObjectUtility.FindByPath(m_rootObject, rec.rootBonePath); 
+                        root = FilmInternalUtilities.GameObjectUtility.FindByPath(m_rootObject, rec.rootBonePath); 
                     
                     if (root == null && boneCount > 0)
                     {
@@ -599,7 +600,7 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
                 if (m_clientObjects.TryGetValue(rec.reference, out srcrec) && srcrec.go != null)
                 {
                     rec.materialIDs = srcrec.materialIDs;
-                    UpdateReference(rec, srcrec);
+                    UpdateReference(rec, srcrec, GetConfigV());
                 }
             }
         }
@@ -816,178 +817,272 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
         return ImageConversion.EncodeToEXR(tex, flags);
     }
 
-    void UpdateMaterialAsset(MaterialData src)
+    private protected abstract void UpdateMaterialAssetV(MaterialData materialData);
+
+    private protected void UpdateMaterialAssetByDefault(MaterialData src, ModelImporterSettings importerSettings)
     {
         int materialID = src.id;
         string materialName = src.name;
 
-        MaterialHolder dst = m_materialList.Find(a => a.id == materialID);
-        if (dst == null) {
-            dst = new MaterialHolder();
-            dst.id = materialID;
-            m_materialList.Add(dst);
-        }
+        MaterialHolder dst = m_materialList.Find(a => a.id == materialID);        
+
+        //if (invalid && creating materials is allowed)
+        if ((dst == null || dst.material == null || dst.name != materialName) && importerSettings.CreateMaterials) {
+
+            if (null == dst) {
+                dst = new MaterialHolder { id = materialID };
+                m_materialList.Add(dst);
+            }
+            Assert.IsNotNull(dst);
+        
 #if UNITY_EDITOR
-        if (m_config.FindMaterialFromAssets && m_config.SyncMaterials 
-            && (dst.material == null || dst.name != materialName))
-        {
-            Material candidate = null;
-
-            string[] guids = AssetDatabase.FindAssets("t:Material " + materialName);
-            foreach (string guid in guids)
-            {
-                string path = AssetDatabase.GUIDToAssetPath(guid);
-                Material material = AssetDatabase.LoadAssetAtPath<Material>(path);
-                if (material.name == materialName)
-                {
-                    candidate = material;
-
-                    // if there are multiple candidates, prefer the editable one (= not a part of fbx etc)
-                    if (((int)material.hideFlags & (int)HideFlags.NotEditable) == 0)
-                        break;
-                }
+            dst.material = SearchMaterialInEditor(importerSettings.MaterialSearchMode, materialName);
+            if (null != dst.material) {
+                dst.ShouldApplyMaterialData = false;
             }
-
-            if (candidate != null)
-            {
-                dst.material = candidate;
-                dst.materialIID = 0; // ignore material params
-                m_needReassignMaterials = true;
-            }
-        }
+            else
 #endif
-        if (dst.material == null)
-        {
-            // prefer non Standard shader because it will be pink in HDRP
-            string shaderName = src.shader;
-            if (shaderName != "Standard")
             {
-                Shader shader = Shader.Find(src.shader);
-                if (shader != null)
-                    dst.material = new Material(shader);
+                dst.material      = CreateDefaultMaterial(src.shader);
+                dst.material.name = materialName;
             }
-            if (dst.material == null)
-                dst.material = CreateDefaultMaterial();
-            dst.material.name = materialName;
-
-            dst.materialIID = dst.material.GetInstanceID();
-            m_needReassignMaterials = true;
+            m_needReassignMaterials = true; 
         }
+
+        if (dst == null || dst.material == null)
+            return;
+        
         dst.name = materialName;
         dst.index = src.index;
         dst.shader = src.shader;
         dst.color = src.color;
 
-        Material dstmat = dst.material;
-        if (m_config.SyncMaterials && dst.materialIID == dst.material.GetInstanceID())
-        {
-            int numKeywords = src.numKeywords;
-            for (int ki = 0; ki < numKeywords; ++ki)
-            {
-                MaterialKeywordData kw = src.GetKeyword(ki);
-                if (kw.value)
-                    dstmat.EnableKeyword(kw.name);
-                else
-                    dstmat.DisableKeyword(kw.name);
-            }
-
-            int numProps = src.numProperties;
-            for (int pi = 0; pi < numProps; ++pi)
-            {
-                MaterialPropertyData      prop     = src.GetProperty(pi);
-                string                    propName = prop.name;
-                MaterialPropertyData.Type propType = prop.type;
-                if (!dstmat.HasProperty(propName))
-                    continue;
-
-                // todo: handle transparent
-                //if (propName == _Color)
-                //{
-                //    var color = prop.vectorValue;
-                //    if (color.w > 0.0f && color.w < 1.0f && dstmat.HasProperty("_SrcBlend"))
-                //    {
-                //        dstmat.SetOverrideTag("RenderType", "Transparent");
-                //        dstmat.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.One);
-                //        dstmat.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
-                //        dstmat.SetInt("_ZWrite", 0);
-                //        dstmat.DisableKeyword("_ALPHATEST_ON");
-                //        dstmat.DisableKeyword("_ALPHABLEND_ON");
-                //        dstmat.EnableKeyword("_ALPHAPREMULTIPLY_ON");
-                //        dstmat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
-                //    }
-                //}
-                if (propName == _EmissionColor)
-                {
-                    if (dstmat.globalIlluminationFlags == MaterialGlobalIlluminationFlags.EmissiveIsBlack)
-                    {
-                        dstmat.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
-                        dstmat.EnableKeyword(_EMISSION);
-                    }
-                }
-                else if (propName == _MetallicGlossMap)
-                {
-                    dstmat.EnableKeyword(_METALLICGLOSSMAP);
-                }
-                else if (propName == _BumpMap)
-                {
-                    dstmat.EnableKeyword(_NORMALMAP);
-                }
-
-                int len = prop.arrayLength;
-                switch (propType)
-                {
-                    case MaterialPropertyData.Type.Int:
-                        dstmat.SetInt(propName, prop.intValue);
-                        break;
-                    case MaterialPropertyData.Type.Float:
-                        if (len == 1)
-                            dstmat.SetFloat(propName, prop.floatValue);
-                        else
-                            dstmat.SetFloatArray(propName, prop.floatArray);
-                        break;
-                    case MaterialPropertyData.Type.Vector:
-                        if (len == 1)
-                            dstmat.SetVector(propName, prop.vectorValue);
-                        else
-                            dstmat.SetVectorArray(propName, prop.vectorArray);
-                        break;
-                    case MaterialPropertyData.Type.Matrix:
-                        if (len == 1)
-                            dstmat.SetMatrix(propName, prop.matrixValue);
-                        else
-                            dstmat.SetMatrixArray(propName, prop.matrixArray);
-                        break;
-                    case MaterialPropertyData.Type.Texture:
-                        {
-                            MaterialPropertyData.TextureRecord rec = prop.textureValue;
-                            Texture2D tex = FindTexture(rec.id);
-                            if (tex != null) {
-                                dstmat.SetTexture(propName, tex);
-                                if (rec.hasScaleOffset) {
-                                    dstmat.SetTextureScale(propName, rec.scale);
-                                    dstmat.SetTextureOffset(propName, rec.offset);
-                                }
-                            }
-                        }
-                        break;
-                    default: break;
-                }
-            }
+        Material destMat = dst.material;
+        if (importerSettings.CreateMaterials && dst.ShouldApplyMaterialData) {
+            ApplyMaterialDataToMaterial(src,destMat, m_textureList);
         }
 
         if (onUpdateMaterial != null)
-            onUpdateMaterial.Invoke(dstmat, src);
+            onUpdateMaterial.Invoke(destMat, src);
     }
+
+//----------------------------------------------------------------------------------------------------------------------    
+    
+#if UNITY_EDITOR
+    
+    [CanBeNull]
+    Material SearchMaterialInEditor(AssetSearchMode materialSearchMode, string materialName) {
+        
+        HashSet<string> materialPaths = null;
+        string assetsFolder  = GetAssetsFolder();
+        switch (materialSearchMode) {
+            case AssetSearchMode.LOCAL: {
+                if (Directory.Exists(assetsFolder)) {
+                    materialPaths = FindAssetPaths("t:Material ", materialName, new string[] {assetsFolder});
+                }
+                break;
+            }
+
+            case AssetSearchMode.RECURSIVE_UP: {
+                string nextFolder = assetsFolder;
+                while (!string.IsNullOrEmpty(nextFolder) && (null==materialPaths|| materialPaths.Count <= 0)) {
+                    if (Directory.Exists(nextFolder)) {
+                        materialPaths = FindAssetPaths("t:Material ", materialName, new string[] {nextFolder}, false);
+                    }
+                    
+                    nextFolder    = PathUtility.GetDirectoryName(nextFolder,1);
+                    if (null != nextFolder) {
+                        nextFolder = nextFolder.Replace('\\','/'); //[TODO-sin: 2021-11-4] Fix in FIU                        
+                    }                        
+                }                
+                break;
+            }
+            case AssetSearchMode.EVERYWHERE: {
+                materialPaths = FindAssetPaths("t:Material ", materialName);
+                break;
+            } 
+        }
+
+        if (null == materialPaths || materialPaths.Count <= 0) 
+            return null;
+        
+        Material candidate = null;
+        
+        foreach (string materialPath in materialPaths) {
+            
+            Material material = AssetDatabase.LoadAssetAtPath<Material>(materialPath);            
+            candidate = material;
+            //if there are multiple candidates, prefer the editable one (= not a part of fbx etc)
+            if (((int)material.hideFlags & (int)HideFlags.NotEditable) == 0)
+                return material;
+            
+        }
+        Assert.IsNotNull(candidate);
+        return candidate;
+    }
+#endif
 
 //----------------------------------------------------------------------------------------------------------------------
     
-    EntityRecord UpdateMeshEntity(MeshData data) {
-        if (!m_config.SyncMeshes)
+    
+#if UNITY_EDITOR    
+    //[TODO-sin: 2021-11-4] To FIU
+    //return a set of paths
+    //exactAssetName: the exact asset name without extention
+    static HashSet<string> FindAssetPaths(string filterPrefix, string exactAssetName=null, 
+        string[] searchInFolders = null, bool searchSubFolder = true) 
+    {
+                
+        string[]   guids       = AssetDatabase.FindAssets($"{filterPrefix} {exactAssetName}", searchInFolders);
+        HashSet<string> foundAssetPaths = new HashSet<string>();
+
+        foreach (string guid in guids) {
+            string path = AssetDatabase.GUIDToAssetPath(guid);
+            if (null != exactAssetName && exactAssetName != Path.GetFileNameWithoutExtension(path))
+                continue;
+
+            if (searchSubFolder || null == searchInFolders) {
+                foundAssetPaths.Add(path);
+                continue;
+            }
+
+            //exact folder required
+            string folder = PathUtility.GetDirectoryName(path,1); 
+            if (null != folder) {
+                folder = folder.Replace('\\','/'); //[TODO-sin: 2021-11-4] Fix in FIU                        
+            }
+            
+            foreach (string searchedFolder in searchInFolders) {
+                if (folder != searchedFolder) 
+                    continue;
+                
+                foundAssetPaths.Add(path);
+                break;
+            }            
+            
+
+        }
+        
+        return foundAssetPaths;
+    }
+#endif    
+    
+//----------------------------------------------------------------------------------------------------------------------    
+
+    static void ApplyMaterialDataToMaterial(MaterialData src, Material destMat, List<TextureHolder> textureHolders) {
+        int numKeywords = src.numKeywords;
+        for (int ki = 0; ki < numKeywords; ++ki)
+        {
+            MaterialKeywordData kw = src.GetKeyword(ki);
+            if (kw.value)
+                destMat.EnableKeyword(kw.name);
+            else
+                destMat.DisableKeyword(kw.name);
+        }
+
+        int numProps = src.numProperties;
+        for (int pi = 0; pi < numProps; ++pi)
+        {
+            MaterialPropertyData      prop     = src.GetProperty(pi);
+            string                    propName = prop.name;
+            MaterialPropertyData.Type propType = prop.type;
+            if (!destMat.HasProperty(propName))
+                continue;
+
+            // todo: handle transparent
+            //if (propName == _Color)
+            //{
+            //    var color = prop.vectorValue;
+            //    if (color.w > 0.0f && color.w < 1.0f && dstmat.HasProperty("_SrcBlend"))
+            //    {
+            //        dstmat.SetOverrideTag("RenderType", "Transparent");
+            //        dstmat.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.One);
+            //        dstmat.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            //        dstmat.SetInt("_ZWrite", 0);
+            //        dstmat.DisableKeyword("_ALPHATEST_ON");
+            //        dstmat.DisableKeyword("_ALPHABLEND_ON");
+            //        dstmat.EnableKeyword("_ALPHAPREMULTIPLY_ON");
+            //        dstmat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+            //    }
+            //}
+            if (propName == _EmissionColor)
+            {
+                if (destMat.globalIlluminationFlags == MaterialGlobalIlluminationFlags.EmissiveIsBlack)
+                {
+                    destMat.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
+                    destMat.EnableKeyword(_EMISSION);
+                }
+            }
+            else if (propName == _MetallicGlossMap)
+            {
+                destMat.EnableKeyword(_METALLICGLOSSMAP);
+            }
+            else if (propName == _BumpMap)
+            {
+                destMat.EnableKeyword(_NORMALMAP);
+            }
+
+            int len = prop.arrayLength;
+            switch (propType)
+            {
+                case MaterialPropertyData.Type.Int:
+                    destMat.SetInt(propName, prop.intValue);
+                    break;
+                case MaterialPropertyData.Type.Float:
+                    if (len == 1)
+                        destMat.SetFloat(propName, prop.floatValue);
+                    else
+                        destMat.SetFloatArray(propName, prop.floatArray);
+                    break;
+                case MaterialPropertyData.Type.Vector:
+                    if (len == 1)
+                        destMat.SetVector(propName, prop.vectorValue);
+                    else
+                        destMat.SetVectorArray(propName, prop.vectorArray);
+                    break;
+                case MaterialPropertyData.Type.Matrix:
+                    if (len == 1)
+                        destMat.SetMatrix(propName, prop.matrixValue);
+                    else
+                        destMat.SetMatrixArray(propName, prop.matrixArray);
+                    break;
+                case MaterialPropertyData.Type.Texture:
+                    {
+                        MaterialPropertyData.TextureRecord rec = prop.textureValue;
+                        Texture2D tex = FindTexture(rec.id, textureHolders);
+                        if (tex != null) {
+                            destMat.SetTexture(propName, tex);
+                            if (rec.hasScaleOffset) {
+                                destMat.SetTextureScale(propName, rec.scale);
+                                destMat.SetTextureOffset(propName, rec.offset);
+                            }
+                        }
+                    }
+                    break;
+                default: break;
+            }
+        }        
+    }
+    
+    
+#if UNITY_EDITOR    
+    //[TODO-sin: 2021-11-2] Move to FIU
+    static T LoadAssetByGUID<T>(string guid) where T:UnityEngine.Object {
+        string path  = AssetDatabase.GUIDToAssetPath(guid);
+        T      asset = AssetDatabase.LoadAssetAtPath<T>(path);
+        return asset;
+    }    
+#endif    
+
+//----------------------------------------------------------------------------------------------------------------------
+    
+    EntityRecord UpdateMeshEntity(MeshData data, MeshSyncPlayerConfig config) {
+        if (!config.SyncMeshes)
             return null;
 
         TransformData dtrans = data.transform;
         MeshDataFlags dflags = data.dataFlags;
-        EntityRecord rec = UpdateTransformEntity(dtrans);
+        EntityRecord rec = UpdateTransformEntity(dtrans, config);
         if (rec == null || dflags.unchanged)
             return null;
 
@@ -1048,7 +1143,7 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
             }
 
             rec.smrUpdated = true;
-            if (m_config.SyncVisibility && dtrans.dataFlags.hasVisibility)
+            if (config.SyncVisibility && dtrans.dataFlags.hasVisibility)
                 rec.smrEnabled = data.transform.visibility.visibleInRender;
             else
                 rec.smrEnabled = smr.enabled;
@@ -1089,14 +1184,14 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
                 }
             }
 
-            if (m_config.SyncVisibility && dtrans.dataFlags.hasVisibility)
+            if (config.SyncVisibility && dtrans.dataFlags.hasVisibility)
                 mr.enabled = data.transform.visibility.visibleInRender;
             mf.sharedMesh = rec.mesh;
             rec.smrEnabled = false;
         }
 
         if (meshUpdated) {
-            MeshCollider collider = m_config.UpdateMeshColliders ? trans.GetComponent<MeshCollider>() : null;
+            MeshCollider collider = config.UpdateMeshColliders ? trans.GetComponent<MeshCollider>() : null;
             if (collider != null &&
                 (collider.sharedMesh == null || collider.sharedMesh == rec.mesh))
             {
@@ -1227,12 +1322,12 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
     }
 
 //----------------------------------------------------------------------------------------------------------------------        
-    EntityRecord UpdatePointsEntity(PointsData data)
+    EntityRecord UpdatePointsEntity(PointsData data,MeshSyncPlayerConfig config)
     {
 
         TransformData dtrans = data.transform;
         PointsDataFlags dflags = data.dataFlags;
-        EntityRecord rec = UpdateTransformEntity(dtrans);
+        EntityRecord rec = UpdateTransformEntity(dtrans, config);
         if (rec == null || dflags.unchanged)
             return null;
 
@@ -1265,7 +1360,7 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
         return rec;
     }
 
-    EntityRecord UpdateTransformEntity(TransformData data)
+    EntityRecord UpdateTransformEntity(TransformData data,MeshSyncPlayerConfig config)
     {
         string path = data.path;
         int hostID = data.hostID;
@@ -1293,7 +1388,7 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
             }
             
             if (rec == null) {
-                trans = GameObjectUtility.FindOrCreateByPath(m_rootObject, path, false);
+                trans = FilmInternalUtilities.GameObjectUtility.FindOrCreateByPath(m_rootObject, path, false);
                 rec = new EntityRecord {
                     go = trans.gameObject,
                     trans = trans,
@@ -1315,7 +1410,7 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
             rec.dataType = data.entityType;
 
             // sync TRS
-            if (m_config.SyncTransform)
+            if (config.SyncTransform)
             {
                 if (dflags.hasPosition)
                     trans.localPosition = data.position;
@@ -1326,7 +1421,7 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
             }
 
             // visibility
-            if (m_config.SyncVisibility && dflags.hasVisibility)
+            if (config.SyncVisibility && dflags.hasVisibility)
                 trans.gameObject.SetActive(visibility.active);
 
             // visibility for reference
@@ -1343,27 +1438,31 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
         return rec;
     }
 
-    EntityRecord UpdateCameraEntity(CameraData data)
-    {
-        if (!m_config.SyncCameras)
+    EntityRecord UpdateCameraEntity(CameraData data, MeshSyncPlayerConfig config) {
+        ComponentSyncSettings cameraSyncSettings = config.GetComponentSyncSettings(MeshSyncPlayerConfig.SYNC_CAMERA);
+        if (!cameraSyncSettings.CanCreate)
             return null;
 
         TransformData dtrans = data.transform;
         CameraDataFlags dflags = data.dataFlags;
-        EntityRecord rec = UpdateTransformEntity(dtrans);
+        EntityRecord rec = UpdateTransformEntity(dtrans, config);
         if (rec == null || dflags.unchanged)
             return null;
 
         Camera cam = rec.camera;
         if (cam == null)
             cam = rec.camera = Misc.GetOrAddComponent<Camera>(rec.go);
-        if (m_config.SyncVisibility && dtrans.dataFlags.hasVisibility)
+
+        if (!cameraSyncSettings.CanUpdate)
+            return null;
+        
+        if (config.SyncVisibility && dtrans.dataFlags.hasVisibility)
             cam.enabled = dtrans.visibility.visibleInRender;
 
         cam.orthographic = data.orthographic;
 
         // use physical camera params if available
-        if (m_usePhysicalCameraParams && dflags.hasFocalLength && dflags.hasSensorSize)
+        if (config.IsPhysicalCameraParamsUsed() && dflags.hasFocalLength && dflags.hasSensorSize)
         {
             cam.usePhysicalProperties = true;
             cam.focalLength = data.focalLength;
@@ -1394,22 +1493,22 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
         return rec;
     }
 
-    EntityRecord UpdateLightEntity(LightData data)
-    {
-        if (!m_config.SyncLights)
+    EntityRecord UpdateLightEntity(LightData data,MeshSyncPlayerConfig config) {
+        ComponentSyncSettings syncLightSettings = config.GetComponentSyncSettings(MeshSyncPlayerConfig.SYNC_LIGHTS); 
+        if (!syncLightSettings.CanCreate)
             return null;
 
         TransformData dtrans = data.transform;
         LightDataFlags dflags = data.dataFlags;
-        EntityRecord rec = UpdateTransformEntity(dtrans);
+        EntityRecord rec = UpdateTransformEntity(dtrans, config);
         if (rec == null || dflags.unchanged)
             return null;
 
-        rec.SetLight(data,m_config.SyncVisibility);
+        rec.SetLight(data,config.SyncVisibility,syncLightSettings.CanUpdate);
         return rec;
     }
 
-    void UpdateReference(EntityRecord dst, EntityRecord src)
+    void UpdateReference(EntityRecord dst, EntityRecord src,MeshSyncPlayerConfig config)
     {
         if (src.dataType == EntityType.Unknown)
         {
@@ -1425,7 +1524,7 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
                 Camera dstcam = dst.camera;
                 if (dstcam == null)
                     dstcam = dst.camera = Misc.GetOrAddComponent<Camera>(dstgo);
-                if (m_config.SyncVisibility && dst.hasVisibility)
+                if (config.SyncVisibility && dst.hasVisibility)
                     dstcam.enabled = dst.visibility.visibleInRender;
                 dstcam.enabled = srccam.enabled;
                 dstcam.orthographic = srccam.orthographic;
@@ -1434,7 +1533,7 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
                 dstcam.farClipPlane = srccam.farClipPlane;
             }
         } else if (src.dataType == EntityType.Light) {
-            dst.SetLight(src,m_config.SyncVisibility);
+            dst.SetLight(src,config.SyncVisibility);
         }
         else if (src.dataType == EntityType.Mesh)
         {
@@ -1446,7 +1545,7 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
             {
                 PointCacheRenderer dstpcr = dst.pointCacheRenderer;
                 if (dstpcr != null) {
-                    if (m_config.SyncVisibility && dst.hasVisibility)
+                    if (config.SyncVisibility && dst.hasVisibility)
                         dstpcr.enabled = dst.visibility.visibleInRender;
                     dstpcr.sharedMesh = mesh;
 
@@ -1473,7 +1572,7 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
                         dstmf = dst.meshFilter = Misc.GetOrAddComponent<MeshFilter>(dstgo);
                     }
 
-                    if (m_config.SyncVisibility && dst.hasVisibility)
+                    if (config.SyncVisibility && dst.hasVisibility)
                         dstmr.enabled = dst.visibility.visibleInRender;
                     dstmf.sharedMesh = mesh;
                     dstmr.sharedMaterials = srcmr.sharedMaterials;
@@ -1494,14 +1593,14 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
                     for (int bi = 0; bi < blendShapeCount; ++bi)
                         dstsmr.SetBlendShapeWeight(bi, srcsmr.GetBlendShapeWeight(bi));
 
-                    if (m_config.SyncVisibility && dst.hasVisibility)
+                    if (config.SyncVisibility && dst.hasVisibility)
                         dstsmr.enabled = dst.visibility.visibleInRender;
                     else
                         dstsmr.enabled = oldEnabled;
                 }
 
                 // handle mesh collider
-                if (m_config.UpdateMeshColliders) {
+                if (config.UpdateMeshColliders) {
                     MeshCollider srcmc = srcgo.GetComponent<MeshCollider>();
                     if (srcmc != null && srcmc.sharedMesh == mesh) {
                         MeshCollider dstmc = Misc.GetOrAddComponent<MeshCollider>(dstgo);
@@ -1530,7 +1629,7 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
 
     void UpdateConstraint(ConstraintData data)
     {
-        Transform trans = GameObjectUtility.FindOrCreateByPath(m_rootObject, data.path, false);
+        Transform trans = FilmInternalUtilities.GameObjectUtility.FindOrCreateByPath(m_rootObject, data.path, false);
         if (trans == null)
             return;
 
@@ -1540,7 +1639,7 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
                 c.AddSource(new ConstraintSource());
             for (int si = 0; si < ns; ++si) {
                 ConstraintSource s = c.GetSource(si);
-                s.sourceTransform = GameObjectUtility.FindOrCreateByPath(m_rootObject, data.GetSourcePath(si), false);
+                s.sourceTransform = FilmInternalUtilities.GameObjectUtility.FindOrCreateByPath(m_rootObject, data.GetSourcePath(si), false);
             }
         };
 
@@ -1583,14 +1682,14 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
 
 //----------------------------------------------------------------------------------------------------------------------   
     
-    void UpdateAnimationAsset(AnimationClipData clipData) {
+    void UpdateAnimationAsset(AnimationClipData clipData,MeshSyncPlayerConfig config) {
         MakeSureAssetDirectoryExists();
         
 #if UNITY_EDITOR
 
-        clipData.Convert((InterpolationMode) m_config.AnimationInterpolation);
-        if (m_config.KeyframeReduction)
-            clipData.KeyframeReduction(m_config.ReductionThreshold, m_config.ReductionEraseFlatCurves);
+        clipData.Convert((InterpolationMode) config.AnimationInterpolation);
+        if (config.KeyframeReduction)
+            clipData.KeyframeReduction(config.ReductionThreshold, config.ReductionEraseFlatCurves);
 
         //float start = Time.realtimeSinceStartup;
 
@@ -1610,7 +1709,7 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
                 target = rec.trans;
             if (target == null)
             {
-                target = GameObjectUtility.FindOrCreateByPath(m_rootObject, path, false);
+                target = FilmInternalUtilities.GameObjectUtility.FindOrCreateByPath(m_rootObject, path, false);
                 if (target == null)
                     return;
             }
@@ -1645,7 +1744,7 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
                         clipName = root.name;
 
                     string dstPath = m_assetsFolder + "/" + Misc.SanitizeFileName(clipName) + ".anim";
-                    SaveAsset(ref clip, dstPath);
+                    clip = Misc.OverwriteOrCreateAsset(clip, dstPath);
                     animator.runtimeAnimatorController = UnityEditor.Animations.AnimatorController.CreateAnimatorControllerAtPathWithClip(dstPath + ".controller", clip);
                     animClipCache[root.gameObject] = clip;
                 }
@@ -1662,8 +1761,8 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
                 root = root.gameObject,
                 target = target.gameObject,
                 path = animPath,
-                enableVisibility = m_config.SyncVisibility,
-                usePhysicalCameraParams = m_usePhysicalCameraParams,
+                enableVisibility = config.SyncVisibility,
+                usePhysicalCameraParams = config.IsPhysicalCameraParamsUsed(),
             };
             if (rec != null)
             {
@@ -1715,13 +1814,7 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
                     changed = true;
                 }
             } else if (materials[si] == null) {
-                // assign dummy material to prevent to go pink
-                if (m_dummyMaterial == null)
-                {
-                    m_dummyMaterial = CreateDefaultMaterial();
-                    m_dummyMaterial.name = "Dummy";
-                }
-                materials[si] = m_dummyMaterial;
+                materials[si] = FindDefaultMaterial();
                 changed = true;
             }
         }
@@ -1797,7 +1890,7 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
             return true;
         
         foreach (MaterialList.Node node in ml.nodes) {
-            Transform trans = GameObjectUtility.FindByPath(m_rootObject, node.path);
+            Transform trans = FilmInternalUtilities.GameObjectUtility.FindByPath(m_rootObject, node.path);
             if (trans == null) 
                 continue;
                 
@@ -1811,7 +1904,7 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
 
 //----------------------------------------------------------------------------------------------------------------------    
 #if UNITY_EDITOR
-    public void GenerateLightmapUV(GameObject go)
+    private void GenerateLightmapUV(GameObject go)
     {
         if (go == null)
             return;
@@ -1832,7 +1925,7 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
             }
         }
     }
-    public void GenerateLightmapUV()
+    private void GenerateLightmapUV()
     {
         foreach (KeyValuePair<string, EntityRecord> kvp in m_clientObjects)
             GenerateLightmapUV(kvp.Value.go);
@@ -1860,8 +1953,9 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
             Material existing = AssetDatabase.LoadAssetAtPath<Material>(dstPath);
             if (overwrite || existing == null)
             {
-                SaveAsset(ref mat, dstPath);
-                if (m_config.Logging)
+                mat = Misc.OverwriteOrCreateAsset(mat, dstPath);
+                MeshSyncPlayerConfig config = GetConfigV();
+                if (config.Logging)
                     Debug.Log("exported material " + dstPath);
             }
             else if (useExistingOnes && existing != null)
@@ -1871,13 +1965,12 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
 
         foreach (MaterialHolder m in m_materialList)
             m.material = doExport(m.material); // material maybe updated by SaveAsset()
-        m_dummyMaterial = doExport(m_dummyMaterial);
-
+ 
         AssetDatabase.SaveAssets();
         ReassignMaterials();
     }
 
-    public void ExportMeshes(bool overwrite = true, bool useExistingOnes = false)
+    internal void ExportMeshes(bool overwrite = true, bool useExistingOnes = false)
     {
         MakeSureAssetDirectoryExists();
 
@@ -1886,6 +1979,7 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
         string basePath = m_assetsFolder;
 
         // export client meshes
+        MeshSyncPlayerConfig config = GetConfigV();
         foreach (KeyValuePair<string, EntityRecord> kvp in m_clientObjects)
         {
             Mesh mesh = kvp.Value.mesh;
@@ -1896,9 +1990,9 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
             Mesh existing = AssetDatabase.LoadAssetAtPath<Mesh>(dstPath);
             if (overwrite || existing == null)
             {
-                SaveAsset(ref mesh, dstPath);
+                mesh = Misc.OverwriteOrCreateAsset(mesh, dstPath);
                 kvp.Value.mesh = mesh; // mesh maybe updated by SaveAsset()
-                if (m_config.Logging)
+                if (config.Logging)
                     Debug.Log("exported material " + dstPath);
             }
             else if (useExistingOnes && existing != null)
@@ -1925,7 +2019,7 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
             if (smr != null)
                 smr.sharedMesh = rec.origMesh;
 
-            if (m_config.Logging)
+            if (config.Logging)
                 Debug.Log("updated mesh " + rec.origMesh.name);
             ++n;
         }
@@ -1933,7 +2027,7 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
             AssetDatabase.SaveAssets();
     }
 
-    public bool ExportMaterialList(string path)
+    internal bool ExportMaterialList(string path)
     {
         if (string.IsNullOrEmpty(path))
             return false;
@@ -1967,7 +2061,7 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
         return true;
     }
 
-    public bool ImportMaterialList(string path)
+    internal bool ImportMaterialList(string path)
     {
         if (path == null || path.Length == 0)
             return false;
@@ -1978,7 +2072,7 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
         return ApplyMaterialList(ml);
     }
 
-    public void CheckMaterialAssigned(bool recordUndo = true)
+    private void CheckMaterialAssigned(bool recordUndo = true)
     {
         bool changed = false;
         foreach (KeyValuePair<string, EntityRecord> kvp in m_clientObjects)
@@ -2041,7 +2135,20 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
         ForceRepaint();
     }
 
-    public List<AnimationClip> GetAnimationClips()
+    private Material FindDefaultMaterial() {
+        if (m_cachedDefaultMaterial != null)
+            return m_cachedDefaultMaterial;
+        
+        GameObject primitive = GameObject.CreatePrimitive(PrimitiveType.Plane);
+        primitive.SetActive(false);
+        m_cachedDefaultMaterial = primitive.GetComponent<MeshRenderer>().sharedMaterial;
+        DestroyImmediate(primitive);
+        return m_cachedDefaultMaterial;
+    }
+    
+//---------------------------------------------------------------------------------------------------------------------    
+
+    internal List<AnimationClip> GetAnimationClips()
     {
         List<AnimationClip> ret = new List<AnimationClip>();
 
@@ -2063,7 +2170,8 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
 
     private void OnSceneViewGUI(SceneView sceneView)
     {
-        if (m_config.SyncMaterialList) {
+        MeshSyncPlayerConfig config = GetConfigV();
+        if (config.SyncMaterialList) {
             if (Event.current.type == EventType.DragExited && Event.current.button == 0)
                 CheckMaterialAssigned();
         }
@@ -2123,19 +2231,15 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
     //will keep the synced resources as edits are performed on the DCC tool side.
     //For SceneCachePlayer, m_assetsFolder is needed only when loading the file, so it should be passed as a parameter 
     
-    [SerializeField] private DataPath  m_assetDir = null;   //OBSOLETE
     [SerializeField] private string  m_assetsFolder = null; //Always starts with "Assets"
     [SerializeField] private Transform m_rootObject;
-
-    [SerializeField] protected MeshSyncPlayerConfig m_config;
     
-    [SerializeField] private bool m_usePhysicalCameraParams = true;
+    [Obsolete][SerializeField] private bool m_usePhysicalCameraParams = true;  
     [SerializeField] private bool m_useCustomCameraMatrices = true;
             
-    [SerializeField] private   Material             m_dummyMaterial;
-    [SerializeField] protected List<MaterialHolder> m_materialList = new List<MaterialHolder>();
-    [SerializeField] protected List<TextureHolder>  m_textureList  = new List<TextureHolder>();
-    [SerializeField] protected List<AudioHolder>    m_audioList    = new List<AudioHolder>();
+    [SerializeField] private protected List<MaterialHolder> m_materialList = new List<MaterialHolder>();
+    [SerializeField] private           List<TextureHolder>  m_textureList  = new List<TextureHolder>();
+    [SerializeField] private           List<AudioHolder>    m_audioList    = new List<AudioHolder>();
 
     [SerializeField] string[]       m_clientObjects_keys;
     [SerializeField] EntityRecord[] m_clientObjects_values;
@@ -2145,6 +2249,11 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
     [SerializeField] int[]          m_objIDTable_values;
     [SerializeField] int            m_objIDSeed = 0;
 
+#pragma warning disable 414
+    [HideInInspector][SerializeField] private int m_baseMeshSyncVersion = (int) BaseMeshSyncVersion.NO_VERSIONING;
+#pragma warning restore 414
+    private const int CUR_BASE_MESHSYNC_VERSION = (int) BaseMeshSyncVersion.INITIAL_0_10_0;
+    
 #if UNITY_EDITOR
     [SerializeField] bool m_sortEntities          = true;
     [SerializeField] bool m_foldSyncSettings      = true;
@@ -2160,10 +2269,12 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
     private bool m_markMeshesDynamic            = false;
     private bool m_needReassignMaterials        = false;
     private bool m_keyValuesSerializationEnabled = true;
+    
+    private Material m_cachedDefaultMaterial;
 
-    private   Dictionary<string, EntityRecord> m_clientObjects = new Dictionary<string, EntityRecord>();
-    protected Dictionary<int, EntityRecord>    m_hostObjects   = new Dictionary<int, EntityRecord>();
-    private   Dictionary<GameObject, int>      m_objIDTable    = new Dictionary<GameObject, int>();
+    private readonly           Dictionary<string, EntityRecord> m_clientObjects = new Dictionary<string, EntityRecord>();
+    private protected readonly Dictionary<int, EntityRecord>    m_hostObjects   = new Dictionary<int, EntityRecord>();
+    private readonly           Dictionary<GameObject, int>      m_objIDTable    = new Dictionary<GameObject, int>();
 
     
 //----------------------------------------------------------------------------------------------------------------------
@@ -2191,6 +2302,13 @@ internal abstract class MeshSyncPlayer : MonoBehaviour, ISerializationCallbackRe
 
     const string _BumpMap   = "_BumpMap";
     const string _NORMALMAP = "_NORMALMAP";
+
+    enum BaseMeshSyncVersion {
+        NO_VERSIONING = 0,  //Didn't have versioning in earlier versions
+        INITIAL_0_10_0 = 1, //initial for version 0.10.0-preview 
+    
+    }
+    
     
 }
 

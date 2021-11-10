@@ -5,16 +5,13 @@ using UnityEngine;
 
 namespace Unity.MeshSync.Editor  {
 [CustomEditor(typeof(MeshSyncServer))]
-internal class MeshSyncServerInspector : MeshSyncPlayerInspector   {
+internal class MeshSyncServerInspector : BaseMeshSyncInspector   {
     
-//----------------------------------------------------------------------------------------------------------------------
 
 //----------------------------------------------------------------------------------------------------------------------
 
-    public override void OnEnable() {
-        base.OnEnable();
+    public void OnEnable() {
         m_meshSyncServer = target as MeshSyncServer;
-
     }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -24,7 +21,9 @@ internal class MeshSyncServerInspector : MeshSyncPlayerInspector   {
 
         EditorGUILayout.Space();
         DrawServerSettings(m_meshSyncServer);
-        DrawPlayerSettings(m_meshSyncServer);
+        DrawAssetSyncSettings(m_meshSyncServer);
+        DrawImportSettings(m_meshSyncServer);
+        DrawMiscSettings(m_meshSyncServer);
         DrawMaterialList(m_meshSyncServer);
         DrawAnimationTweak(m_meshSyncServer);
         DrawExportAssets(m_meshSyncServer);
@@ -68,7 +67,7 @@ internal class MeshSyncServerInspector : MeshSyncPlayerInspector   {
             
             string selectedFolder = EditorGUIDrawerUtility.DrawFolderSelectorGUI("Asset Dir", "Asset Dir", 
                 t.GetAssetsFolder(), null);
-            t.SetAssetsFolder(AssetUtility.NormalizeAssetPath(selectedFolder));
+            t.SetAssetsFolder(AssetEditorUtility.NormalizePath(selectedFolder));
             
             Transform rootObject = (Transform) EditorGUILayout.ObjectField("Root Object", t.GetRootObject(), 
                 typeof(Transform), allowSceneObjects: true);                

@@ -1,13 +1,11 @@
 using System;
-using System.Linq;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
+using JetBrains.Annotations;
 using UnityEngine;
-#if UNITY_2019_1_OR_NEWER
 using Unity.Collections;
-#endif
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -188,30 +186,27 @@ namespace Unity.MeshSync
 
         // save asset to path.
         // if there is already a file, overwrite it but keep .meta intact.
-        public static T SaveAsset<T>(T asset, string path) where T : UnityEngine.Object
-        {
-            try
-            {
+        [CanBeNull]
+        public static T OverwriteOrCreateAsset<T>(T asset, string path) where T : UnityEngine.Object {
+            try {
                 path = Misc.SanitizeFileName(path);
 
                 // to keep meta, rewrite the existing one if already exists.
                 T loadedAsset = AssetDatabase.LoadAssetAtPath<T>(path);
-                if (loadedAsset != null)
-                {
+                if (loadedAsset != null) {
                     EditorUtility.CopySerialized(asset, loadedAsset);
                     return loadedAsset;
                 }
-                else
-                {
-                    AssetDatabase.CreateAsset(asset, path);
-                    return asset;
-                }
+                
+                AssetDatabase.CreateAsset(asset, path);
+                return asset;
             }
-            catch (Exception)
-            {
+            catch (Exception e) {
+                Debug.LogError($"[MeshSync] Error in saving asset at {path}. Msg: {e.ToString()}");
                 return null;
             }
         }
+        
 #endif
 
         internal static UnityEngine.TextureFormat ToUnityTextureFormat(TextureFormat v)
@@ -250,9 +245,7 @@ namespace Unity.MeshSync
             }
         }
 
-#if UNITY_2019_1_OR_NEWER
         // explicit layout doesn't work with generics...
-
         [StructLayout(LayoutKind.Explicit)]
         struct NAByte
         {
@@ -278,7 +271,7 @@ namespace Unity.MeshSync
             union.nativeArray = na;
             return union.pointer;
         }
-#endif
+        
         internal class UniqueNameGenerator
         {
             public string Gen(string name)

@@ -3,17 +3,40 @@ using System;
 #endif
 using Unity.Collections;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
 
 namespace Unity.MeshSync {
+
+/// <summary>
+/// A component to sync meshes/models editing in DCC tools into Unity in real time.
+/// </summary>
 [ExecuteInEditMode]
-internal class MeshSyncServer : MeshSyncPlayer {
+public class MeshSyncServer : BaseMeshSync {
+
+    
+    /// <summary>
+    /// Sets a callback which will be called after MeshSyncServer receives data and finishes processing it
+    /// </summary>
+    /// <param name="cb"></param>
+    public void SetOnPostRecvMessageCallback(ServerMessageCallback cb) {
+
+        m_onPostRecvMessageCB = cb;
+    }
+    
+//----------------------------------------------------------------------------------------------------------------------
+    
     
     protected override void InitInternalV() {
         
+    }
+
+
+    private protected override void UpdateMaterialAssetV(MaterialData materialData) {
+        UpdateMaterialAssetByDefault(materialData,m_config.GetModelImporterSettings());
     }
     
 //----------------------------------------------------------------------------------------------------------------------        
@@ -23,10 +46,17 @@ internal class MeshSyncServer : MeshSyncPlayer {
     internal bool IsAutoStart()                 { return m_autoStartServer; }
     internal int  GetServerPort()               { return m_serverPort; }
     internal void SetServerPort(int port )      { m_serverPort = port; }
+    
+    internal override MeshSyncPlayerConfig GetConfigV() => m_config;
+    
 #endregion
 
 //----------------------------------------------------------------------------------------------------------------------        
-    internal void SetAutoStartServer(bool autoStart) {
+    /// <summary>
+    /// Sets whether the server should be started automatically or not
+    /// </summary>
+    /// <param name="autoStart">true if the server should start automatically; otherwise, false.</param>
+    public void SetAutoStartServer(bool autoStart) {
         m_autoStartServer = autoStart; 
 
 #if UNITY_STANDALONE        
@@ -39,7 +69,7 @@ internal class MeshSyncServer : MeshSyncPlayer {
 //----------------------------------------------------------------------------------------------------------------------        
     
 #if UNITY_EDITOR
-    public bool foldServerSettings
+    internal bool foldServerSettings
     {
         get { return m_foldServerSettings; }
         set { m_foldServerSettings = value; }
@@ -57,7 +87,10 @@ internal class MeshSyncServer : MeshSyncPlayer {
         return ret;
     }
     
-    internal void StartServer()
+    /// <summary>
+    /// Starts the server. If the server is already running, it will be restarted.
+    /// </summary>
+    public void StartServer()
     {
 #if UNITY_STANDALONE            
         StopServer();
@@ -76,7 +109,7 @@ internal class MeshSyncServer : MeshSyncPlayer {
         m_server.fileRootPath = GetServerDocRootPath();
         m_server.AllowPublicAccess(projectSettings.GetServerPublicAccess());
         
-        m_handler = OnServerMessage;
+        m_handler = HandleRecvMessage;
 
 #if UNITY_EDITOR
         EditorApplication.update += PollServerEvents;
@@ -119,7 +152,7 @@ internal class MeshSyncServer : MeshSyncPlayer {
     }
 
     protected override void OnAfterDeserializeMeshSyncPlayerV() {
-        m_version = CUR_SERVER_VERSION;
+        m_serverVersion = CUR_SERVER_VERSION;
     }   
     
 //----------------------------------------------------------------------------------------------------------------------
@@ -137,7 +170,8 @@ internal class MeshSyncServer : MeshSyncPlayer {
     #endregion
 
     #region MessageHandlers
-    public void PollServerEvents() {
+
+    private void PollServerEvents() {
         if (m_requestRestartServer) {
             m_requestRestartServer = false;
             StartServer();
@@ -151,34 +185,36 @@ internal class MeshSyncServer : MeshSyncPlayer {
             m_server.ProcessMessages(m_handler);
     }
 
-    void OnServerMessage(MessageType type, IntPtr data) {
+    void HandleRecvMessage(NetworkMessageType type, IntPtr data) {
         Try(() => {
             switch (type) {
-                case MessageType.Get:
+                case NetworkMessageType.Get:
                     OnRecvGet((GetMessage)data);
                     break;
-                case MessageType.Set:
+                case NetworkMessageType.Set:
                     OnRecvSet((SetMessage)data);
                     break;
-                case MessageType.Delete:
+                case NetworkMessageType.Delete:
                     OnRecvDelete((DeleteMessage)data);
                     break;
-                case MessageType.Fence:
+                case NetworkMessageType.Fence:
                     OnRecvFence((FenceMessage)data);
                     break;
-                case MessageType.Text:
+                case NetworkMessageType.Text:
                     OnRecvText((TextMessage)data);
                     break;
-                case MessageType.Screenshot:
+                case NetworkMessageType.Screenshot:
                     OnRecvScreenshot(data);
                     break;
-                case MessageType.Query:
+                case NetworkMessageType.Query:
                     OnRecvQuery((QueryMessage)data);
                     break;
                 default:
                     break;
             }
         });
+
+        m_onPostRecvMessageCB?.Invoke(type);
     }
 
     void OnRecvGet(GetMessage mes) {
@@ -212,7 +248,7 @@ internal class MeshSyncServer : MeshSyncPlayer {
         }
     }
 
-    void OnRecvText(TextMessage mes) {
+    static void OnRecvText(TextMessage mes) {
         mes.Print();
     }
 
@@ -232,10 +268,10 @@ internal class MeshSyncServer : MeshSyncPlayer {
     void OnRecvQuery(QueryMessage data) {
         switch (data.queryType) {
             case QueryMessage.QueryType.PluginVersion:
-                data.AddResponseText(MeshSyncPlayer.GetPluginVersion());
+                data.AddResponseText(Lib.GetPluginVersion());
                 break;
             case QueryMessage.QueryType.ProtocolVersion:
-                data.AddResponseText(MeshSyncPlayer.protocolVersion.ToString());
+                data.AddResponseText(Lib.GetProtocolVersion().ToString());
                 break;
             case QueryMessage.QueryType.HostName:
                 data.AddResponseText("Unity " + Application.unityVersion);
@@ -422,7 +458,7 @@ internal class MeshSyncServer : MeshSyncPlayer {
 
     void Reset() {
         MeshSyncProjectSettings projectSettings = MeshSyncProjectSettings.GetOrCreateSettings();
-        m_config = MeshSyncProjectSettings.GetOrCreateSettings().GetDefaultServerConfig();
+        m_config = new MeshSyncServerConfig(projectSettings.GetDefaultServerConfig());
         m_serverPort = projectSettings.GetDefaultServerPort();
         
     }
@@ -458,18 +494,24 @@ internal class MeshSyncServer : MeshSyncPlayer {
 #endif // UNITY_STANDALONE
     
     [SerializeField] private bool m_autoStartServer = false;
-    [SerializeField]         int  m_serverPort      = MeshSyncConstants.DEFAULT_SERVER_PORT;
+    [SerializeField] private int  m_serverPort      = MeshSyncConstants.DEFAULT_SERVER_PORT;
 #if UNITY_EDITOR
     [SerializeField] bool m_foldServerSettings = true;
 #endif
+    
+    [SerializeField] private MeshSyncServerConfig m_config;
 
 #pragma warning disable 414
-    [HideInInspector][SerializeField] private int m_version = (int) ServerVersion.NO_VERSIONING;
+    //Renamed in 0.10.x-preview
+    [FormerlySerializedAs("m_version")] [HideInInspector][SerializeField] private int m_serverVersion = (int) ServerVersion.NO_VERSIONING;
 #pragma warning restore 414
     private const int CUR_SERVER_VERSION = (int) ServerVersion.INITIAL_0_4_0;
     
     
     private bool m_serverStarted = false;
+    
+    private ServerMessageCallback m_onPostRecvMessageCB = null;
+    
 
 //----------------------------------------------------------------------------------------------------------------------    
     

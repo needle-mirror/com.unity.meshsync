@@ -21,41 +21,36 @@ internal class ServerSettingsTab : IMeshSyncSettingsTab {
 //----------------------------------------------------------------------------------------------------------------------        
     public void Setup(VisualElement root) {
         Assert.IsNotNull(root);
+        root.Clear();
         
         VisualTreeAsset tab = UIElementsEditorUtility.LoadVisualTreeAsset(Constants.SERVER_SETTINGS_TAB_PATH);	    
         TemplateContainer tabInstance = tab.CloneTree();
       
         VisualElement content = tabInstance.Query<VisualElement>("Content").First();
         
-
-        //Templates
-        VisualTreeAsset fieldTemplate = LoadVisualTreeAsset(Constants.PROJECT_SETTINGS_FIELD_TEMPLATE_PATH);
         MeshSyncProjectSettings projectSettings = MeshSyncProjectSettings.GetOrCreateSettings();
         
         //Add server port
-        m_serverPortField = AddField<IntegerField,int>(fieldTemplate, content, Contents.ServerPort,
+        m_serverPortField = AddField<IntegerField,int>(content, Contents.ServerPort,
             projectSettings.GetDefaultServerPort(),
-            (int newValue) => {
-                MeshSyncProjectSettings settings = MeshSyncProjectSettings.GetOrCreateSettings();
-                settings.SetDefaultServerPort((ushort) newValue);
-            }
+            (int newValue) => { projectSettings.SetDefaultServerPort((ushort) newValue); }
         );
 
-        m_allowPublicAccessToggle = AddField<Toggle,bool>(fieldTemplate, content, Contents.AllowPublicAccess,
+        m_allowPublicAccessToggle = AddField<Toggle,bool>(content, Contents.AllowPublicAccess,
             projectSettings.GetServerPublicAccess(),
-            (bool  newValue) => {
-                MeshSyncProjectSettings settings = MeshSyncProjectSettings.GetOrCreateSettings();
-                settings.SetServerPublicAccess(newValue);
-            }
+            (bool  newValue) => { projectSettings.SetServerPublicAccess(newValue); }
         );
         
-
         //MeshSyncPlayerConfig section
         MeshSyncPlayerConfigSection section = new MeshSyncPlayerConfigSection(MeshSyncPlayerType.SERVER);
         section.Setup(content);
         
-      
-                
+        Button resetButton = tabInstance.Query<Button>("ResetButton").First();
+        resetButton.clicked += () => {
+            projectSettings.ResetDefaultServerConfig();
+            projectSettings.Save();
+            Setup(root);
+        };
         
         
         root.Add(tabInstance);
@@ -64,26 +59,15 @@ internal class ServerSettingsTab : IMeshSyncSettingsTab {
 //----------------------------------------------------------------------------------------------------------------------
     
     //Support Toggle, FloatField, etc
-    private F AddField<F,V>(VisualTreeAsset template, VisualElement parent, GUIContent content,
+    private F AddField<F,V>(VisualElement parent, GUIContent content,
         V initialValue, Action<V> onValueChanged) where F: VisualElement,INotifyValueChanged<V>, new()  
     {
-        TemplateContainer templateInstance = template.CloneTree();
-        VisualElement     fieldContainer   = templateInstance.Query<VisualElement>("FieldContainer").First();
-        Label             label            = templateInstance.Query<Label>().First();
-        label.text    = content.text;
-        label.tooltip = content.tooltip;
-        
-        F field = new F();
-        field.AddToClassList("project-settings-field");
-        field.SetValueWithoutNotify(initialValue);
-        field.RegisterValueChangedCallback((ChangeEvent<V> changeEvent) => {
-        
+        F field = UIElementsEditorUtility.AddField<F, V>(parent, content, initialValue, (ChangeEvent<V> changeEvent) => {
             onValueChanged(changeEvent.newValue);
-            MeshSyncProjectSettings.GetOrCreateSettings().SaveSettings();
-        });        
-        
-        fieldContainer.Add(field);
-        parent.Add(templateInstance);
+            MeshSyncProjectSettings.GetOrCreateSettings().Save();
+        });
+
+        field.AddToClassList("project-settings-field");
         return field;
     }	
     

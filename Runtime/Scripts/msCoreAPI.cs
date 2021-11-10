@@ -2,9 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using UnityEngine;
-#if UNITY_2019_1_OR_NEWER
 using Unity.Collections;
-#endif
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -26,26 +24,18 @@ namespace Unity.MeshSync
         #endregion
         
         
-        public static string GetPluginVersion() {
+        internal static string GetPluginVersion() {
             IntPtr nativeStr = msGetPluginVersionStr();//Not direct marshalling because there is no free on C# side.
             return Marshal.PtrToStringAnsi(nativeStr);
         }
 
-        public static int protocolVersion { get { return msGetProtocolVersion(); } }
+        internal static int GetProtocolVersion() { return msGetProtocolVersion(); } 
 
         public const int invalidID = -1;
         public const uint maxVerticesPerMesh =
-#if UNITY_2017_3_OR_NEWER
             0xffffffff;
-#else
-            0xffff;
-#endif
         public const uint maxBoneInfluence =
-#if UNITY_2019_1_OR_NEWER
             255;
-#else
-            4;
-#endif
     }
 
 
@@ -640,9 +630,7 @@ namespace Unity.MeshSync
         public GameObject target;
         public string path;
         public bool enableVisibility;
-#if UNITY_2018_1_OR_NEWER
         public bool usePhysicalCameraParams;
-#endif
     }
 
     internal struct AnimationCurveData
@@ -849,7 +837,6 @@ namespace Unity.MeshSync
             var clip = ctx.clip;
             var path = ctx.path;
 
-#if UNITY_2018_1_OR_NEWER
             // use physical camera params if available
             bool isPhysicalCameraParamsAvailable = false;
             if (ctx.usePhysicalCameraParams)
@@ -885,7 +872,6 @@ namespace Unity.MeshSync
                 }
             }
             else
-#endif
             {
                 const string Target = "field of view";
                 SetCurve(clip, path, tcam, Target, null, true);
@@ -1865,7 +1851,7 @@ namespace Unity.MeshSync
             }
             set { msMeshWriteBindPoses(self, value, value.Length); }
         }
-        internal void SetBonePaths(MeshSyncPlayer mss, Transform[] bones)
+        internal void SetBonePaths(BaseMeshSync mss, Transform[] bones)
         {
             int n = bones.Length;
             for (int i = 0; i < n; ++i)

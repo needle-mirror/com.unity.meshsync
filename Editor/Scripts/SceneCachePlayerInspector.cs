@@ -8,13 +8,12 @@ namespace Unity.MeshSync.Editor  {
 
 [CustomEditor(typeof(SceneCachePlayer))]
 [CanEditMultipleObjects]
-internal class SceneCachePlayerInspector : MeshSyncPlayerInspector {
+internal class SceneCachePlayerInspector : BaseMeshSyncInspector {
     
 
 //----------------------------------------------------------------------------------------------------------------------
 
-    public override void OnEnable() {
-        base.OnEnable();
+    public void OnEnable() {
         m_sceneCachePlayer = target as SceneCachePlayer;
         
         m_targets.Clear();
@@ -35,11 +34,19 @@ internal class SceneCachePlayerInspector : MeshSyncPlayerInspector {
             ShowReloadSelectedSceneCacheFilesGUI();
             return;
         }
+
+        //prevent errors when applying new SceneCacheImporter settings
+        if (null == m_sceneCachePlayer)
+            return;
+
         
         EditorGUILayout.Space();
-        bool changed = DrawCacheSettings();
-        changed |= DrawPlayerSettings(m_sceneCachePlayer);
-        MeshSyncPlayerConfig config = m_sceneCachePlayer.GetConfig();
+        bool changed = DrawCacheSettings(m_sceneCachePlayer);
+        changed |= DrawAssetSyncSettings(m_sceneCachePlayer);
+        changed |= DrawSceneCacheImportSettings(m_sceneCachePlayer);
+        changed |= DrawMiscSettings(m_sceneCachePlayer);
+        
+        MeshSyncPlayerConfig config = m_sceneCachePlayer.GetConfigV();
         if (config.Profiling) {
             EditorGUILayout.TextArea(m_sceneCachePlayer.dbgProfileReport, GUILayout.Height(120));
             EditorGUILayout.Space();
@@ -55,27 +62,27 @@ internal class SceneCachePlayerInspector : MeshSyncPlayerInspector {
         
         PrefabUtility.RecordPrefabInstancePropertyModifications(m_sceneCachePlayer);
         
-    }
+    }     
 
 //----------------------------------------------------------------------------------------------------------------------
     
-    bool  DrawCacheSettings() {
+    bool DrawCacheSettings(SceneCachePlayer t) {
         bool changed = false;
         GUIStyle styleFold = EditorStyles.foldout;
         styleFold.fontStyle = FontStyle.Bold;
 
-        m_sceneCachePlayer.foldCacheSettings = EditorGUILayout.Foldout(m_sceneCachePlayer.foldCacheSettings, "Player", true, styleFold);
-        if (m_sceneCachePlayer.foldCacheSettings) {
+        t.foldCacheSettings = EditorGUILayout.Foldout(t.foldCacheSettings, "Player", true, styleFold);
+        if (t.foldCacheSettings) {
             //Show Selector GUI. Check if we should reopen
-            string fullPath           = m_sceneCachePlayer.GetSceneCacheFilePath();
-            string prevNormalizedPath = AssetUtility.NormalizeAssetPath(fullPath);
+            string fullPath           = t.GetSceneCacheFilePath();
+            string prevNormalizedPath = AssetEditorUtility.NormalizePath(fullPath);
 
             string newNormalizedPath = EditorGUIDrawerUtility.DrawFileSelectorGUI("Cache File Path", "MeshSync", 
                 prevNormalizedPath, "sc", OnSceneCacheFileReload);
-            newNormalizedPath = AssetUtility.NormalizeAssetPath(newNormalizedPath);            
+            newNormalizedPath = AssetEditorUtility.NormalizePath(newNormalizedPath);            
 
             if (newNormalizedPath != prevNormalizedPath) {
-                ChangeSceneCacheFileInInspector(m_sceneCachePlayer, newNormalizedPath);
+                ChangeSceneCacheFileInInspector(t, newNormalizedPath);
             }
             
             if (!string.IsNullOrEmpty(fullPath) && !fullPath.StartsWith(Application.streamingAssetsPath)) {
@@ -83,7 +90,7 @@ internal class SceneCachePlayerInspector : MeshSyncPlayerInspector {
                 const float BUTTON_WIDTH = 50.0f;
                 if (GUILayout.Button("Copy", GUILayout.Width(BUTTON_WIDTH))) {
                     string dstPath = Misc.CopyFileToStreamingAssets(fullPath);
-                    ChangeSceneCacheFileInInspector(m_sceneCachePlayer, dstPath);
+                    ChangeSceneCacheFileInInspector(t, dstPath);
                 }
                 GUILayout.Label("Scene Cache file to StreamingAssets");
                 EditorGUILayout.LabelField("(RECOMMENDED)", EditorStyles.boldLabel);
@@ -94,48 +101,48 @@ internal class SceneCachePlayerInspector : MeshSyncPlayerInspector {
             EditorGUILayout.Space();
 
             //Time Unit
-            changed |= EditorGUIDrawerUtility.DrawUndoableGUI(m_sceneCachePlayer,"SceneCache: Time Unit",
+            changed |= EditorGUIDrawerUtility.DrawUndoableGUI(t,"SceneCache: Time Unit",
                 guiFunc: () => (SceneCachePlayer.TimeUnit) EditorGUILayout.Popup("Time Unit", 
-                    (int) m_sceneCachePlayer.GetTimeUnit(), m_timeUnitEnums), 
+                    (int) t.GetTimeUnit(), TIME_UNIT_ENUMS), 
                 updateFunc: (SceneCachePlayer.TimeUnit timeUnit) => {
-                    m_sceneCachePlayer.SetTimeUnit(timeUnit);
-                    m_sceneCachePlayer.ResetTimeAnimation();                    
+                    t.SetTimeUnit(timeUnit);
+                    t.ResetTimeAnimation();                    
                 }
             );
 
 
-            SceneCachePlayer.TimeUnit selectedTimeUnit = m_sceneCachePlayer.GetTimeUnit();
+            SceneCachePlayer.TimeUnit selectedTimeUnit = t.GetTimeUnit();
             
             if (selectedTimeUnit == SceneCachePlayer.TimeUnit.Seconds) {
 
-                changed |= EditorGUIDrawerUtility.DrawUndoableGUI(m_sceneCachePlayer, "SceneCache: Time",
-                    guiFunc: () => (EditorGUILayout.FloatField("Time", m_sceneCachePlayer.GetTime())),
-                    updateFunc: (float time) => { m_sceneCachePlayer.SetTime(time); });
+                changed |= EditorGUIDrawerUtility.DrawUndoableGUI(t, "SceneCache: Time",
+                    guiFunc: () => (EditorGUILayout.FloatField("Time", t.GetTime())),
+                    updateFunc: (float time) => { t.SetTime(time); });
 
-                changed |= EditorGUIDrawerUtility.DrawUndoableGUI(m_sceneCachePlayer, "SceneCache: Interpolation",
-                    guiFunc: () => (EditorGUILayout.Toggle("Interpolation", m_sceneCachePlayer.GetInterpolation())),
-                    updateFunc: (bool toggle) => { m_sceneCachePlayer.SetInterpolation(toggle); });
+                changed |= EditorGUIDrawerUtility.DrawUndoableGUI(t, "SceneCache: Interpolation",
+                    guiFunc: () => (EditorGUILayout.Toggle("Interpolation", t.GetInterpolation())),
+                    updateFunc: (bool toggle) => { t.SetInterpolation(toggle); });
                 
             } else if (selectedTimeUnit == SceneCachePlayer.TimeUnit.Frames) {
 
-                changed |= EditorGUIDrawerUtility.DrawUndoableGUI(m_sceneCachePlayer, "SceneCache: Base Frame",
-                    guiFunc: () => ((SceneCachePlayer.BaseFrame) EditorGUILayout.Popup("Base Frame", (int)m_sceneCachePlayer.GetBaseFrame(), m_baseFrameEnums)),                   
+                changed |= EditorGUIDrawerUtility.DrawUndoableGUI(t, "SceneCache: Base Frame",
+                    guiFunc: () => ((SceneCachePlayer.BaseFrame) EditorGUILayout.Popup("Base Frame", (int)t.GetBaseFrame(), BASE_FRAME_ENUMS)),                   
                     updateFunc: (SceneCachePlayer.BaseFrame baseFrame) => {
-                        m_sceneCachePlayer.SetBaseFrame(baseFrame);                    
-                        m_sceneCachePlayer.ResetTimeAnimation();
+                        t.SetBaseFrame(baseFrame);                    
+                        t.ResetTimeAnimation();
                     });
 
-                changed |= EditorGUIDrawerUtility.DrawUndoableGUI(m_sceneCachePlayer, "SceneCache: Frame",
-                    guiFunc: () => (EditorGUILayout.IntField("Frame", m_sceneCachePlayer.GetFrame())),
-                    updateFunc: (int frame) => { m_sceneCachePlayer.SetFrame(frame); });
+                changed |= EditorGUIDrawerUtility.DrawUndoableGUI(t, "SceneCache: Frame",
+                    guiFunc: () => (EditorGUILayout.IntField("Frame", t.GetFrame())),
+                    updateFunc: (int frame) => { t.SetFrame(frame); });
                 
             }
 
             // preload
             {                
-                changed |= EditorGUIDrawerUtility.DrawUndoableGUI(m_sceneCachePlayer, "SceneCache: Preload",
-                    guiFunc: () => (EditorGUILayout.IntSlider("Preload Length", m_sceneCachePlayer.GetPreloadLength(), 0, m_sceneCachePlayer.frameCount)),
-                    updateFunc: (int preloadLength) => { m_sceneCachePlayer.SetPreloadLength(preloadLength); });
+                changed |= EditorGUIDrawerUtility.DrawUndoableGUI(t, "SceneCache: Preload",
+                    guiFunc: () => (EditorGUILayout.IntSlider("Preload Length", t.GetPreloadLength(), 0, t.frameCount)),
+                    updateFunc: (int preloadLength) => { t.SetPreloadLength(preloadLength); });
             }
 
             EditorGUILayout.Space();
@@ -144,6 +151,87 @@ internal class SceneCachePlayerInspector : MeshSyncPlayerInspector {
         return changed;
     }
 
+//----------------------------------------------------------------------------------------------------------------------
+
+    private static bool DrawSceneCacheImportSettings(SceneCachePlayer t) {
+
+        bool changed   = false;
+        MeshSyncPlayerConfig playerConfig = t.GetConfigV();
+        
+        t.foldImportSettings = EditorGUILayout.Foldout(t.foldImportSettings, "Import Settings", true, GetBoldFoldoutStyle());
+        if (t.foldImportSettings) {
+
+            IHasModelImporterSettings importer = AssetImporter.GetAtPath(t.GetSceneCacheFilePath()) as IHasModelImporterSettings;
+            ModelImporterSettings importerSettings = playerConfig.GetModelImporterSettings();
+                
+            if (null == importer) {
+                MeshSyncInspectorUtility.DrawModelImporterSettingsGUI(t, importerSettings);
+            } else {
+
+                bool isOverride = t.IsModelImporterSettingsOverridden();
+                
+                EditorGUILayout.BeginHorizontal();
+                EditorGUIDrawerUtility.DrawUndoableGUI(t, "Override",
+                    guiFunc: () => GUILayout.Toggle(isOverride, "", GUILayout.MaxWidth(15.0f)), 
+                    updateFunc: (bool overrideValue) => { t.OverrideModelImporterSettings(overrideValue); });
+
+                using (new EditorGUI.DisabledScope(!isOverride)) {
+                    EditorGUIDrawerUtility.DrawUndoableGUI(t, "Create Materials",
+                        guiFunc: () => (bool)EditorGUILayout.Toggle("Create Materials", importerSettings.CreateMaterials),
+                        updateFunc: (bool createMat) => { importerSettings.CreateMaterials = createMat; });
+                }
+                
+                EditorGUILayout.EndHorizontal();
+
+                using (new EditorGUI.DisabledScope(!isOverride)) {
+                    ++EditorGUI.indentLevel;
+                    MeshSyncInspectorUtility.DrawModelImporterMaterialSearchMode(t, importerSettings);
+                    --EditorGUI.indentLevel;
+                }
+                
+            }
+            
+            
+
+            changed |= EditorGUIDrawerUtility.DrawUndoableGUI(t, "MeshSync: Animation Interpolation",
+                guiFunc: () => EditorGUILayout.Popup(new GUIContent("Animation Interpolation"),
+                    playerConfig.AnimationInterpolation, MeshSyncEditorConstants.ANIMATION_INTERPOLATION_ENUMS),
+                updateFunc: (int val) => { playerConfig.AnimationInterpolation = val; }
+            );
+
+
+            changed |= EditorGUIDrawerUtility.DrawUndoableGUI(t, "MeshSync: Keyframe Reduction",
+                guiFunc: () => EditorGUILayout.Toggle("Keyframe Reduction", playerConfig.KeyframeReduction),
+                updateFunc: (bool toggle) => { playerConfig.KeyframeReduction = toggle; }
+            );
+
+            if (playerConfig.KeyframeReduction) {
+                EditorGUI.indentLevel++;
+
+                changed |= EditorGUIDrawerUtility.DrawUndoableGUI(t, "MeshSync: Threshold",
+                    guiFunc: () => EditorGUILayout.FloatField("Threshold", playerConfig.ReductionThreshold),
+                    updateFunc: (float val) => { playerConfig.ReductionThreshold = val; }
+                );
+
+                changed |= EditorGUIDrawerUtility.DrawUndoableGUI(t, "MeshSync: Erase Flat Curves",
+                    guiFunc: () => EditorGUILayout.Toggle("Erase Flat Curves", playerConfig.ReductionEraseFlatCurves),
+                    updateFunc: (bool toggle) => { playerConfig.ReductionEraseFlatCurves = toggle; }
+                );
+                EditorGUI.indentLevel--;
+            }
+
+            changed |= EditorGUIDrawerUtility.DrawUndoableGUI(t, "MeshSync: Z-Up Correction",
+                guiFunc: () => EditorGUILayout.Popup(new GUIContent("Z-Up Correction"), playerConfig.ZUpCorrection,
+                    MeshSyncEditorConstants.Z_UP_CORRECTION_ENUMS),
+                updateFunc: (int val) => { playerConfig.ZUpCorrection = val; }
+            );
+
+            EditorGUILayout.Space();
+        }
+
+        return changed;
+    }
+    
 //----------------------------------------------------------------------------------------------------------------------
     void OnSceneCacheFileReload() {
         SceneCachePlayerEditorUtility.ReloadSceneCacheFile(m_sceneCachePlayer);
@@ -190,8 +278,8 @@ internal class SceneCachePlayerInspector : MeshSyncPlayerInspector {
     private List<SceneCachePlayer> m_targets          = new List<SceneCachePlayer>();
 
 
-    private readonly string[] m_timeUnitEnums = System.Enum.GetNames( typeof( SceneCachePlayer.TimeUnit ) );
-    private readonly string[] m_baseFrameEnums = System.Enum.GetNames( typeof( SceneCachePlayer.BaseFrame ) );
+    private static readonly string[] TIME_UNIT_ENUMS = System.Enum.GetNames( typeof( SceneCachePlayer.TimeUnit ) );
+    private static readonly string[] BASE_FRAME_ENUMS = System.Enum.GetNames( typeof( SceneCachePlayer.BaseFrame ) );
     
 
 }

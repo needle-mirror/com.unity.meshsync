@@ -33,7 +33,7 @@ internal class MeshSyncProjectSettings : BaseJsonSettings {
         }        
 
 #if UNITY_EDITOR
-        m_instance.SaveSettings();
+        m_instance.Save();
 #endif
         return m_instance;
         
@@ -43,15 +43,17 @@ internal class MeshSyncProjectSettings : BaseJsonSettings {
 //----------------------------------------------------------------------------------------------------------------------
 
     //Constructor
-    private MeshSyncProjectSettings() {
+    private MeshSyncProjectSettings() : base(MESHSYNC_RUNTIME_SETTINGS_PATH) {
         ValidatePlayerConfigs();
         
     }
    
 //----------------------------------------------------------------------------------------------------------------------
-    protected override object GetLock() { return m_instanceLock; }
-    internal override string GetSettingsPath() { return MESHSYNC_RUNTIME_SETTINGS_PATH;}
+    protected override object GetLockV() { return m_instanceLock; }
+    
+    protected override void OnDeserializeV() {}
 
+    
     internal ushort GetDefaultServerPort() { return m_defaultServerPort;}
     internal void SetDefaultServerPort(ushort port) { m_defaultServerPort = port;}
 
@@ -62,22 +64,30 @@ internal class MeshSyncProjectSettings : BaseJsonSettings {
     internal void   SetServerPublicAccess(bool access) { m_serverPublicAccess = access;}
     
     
-    internal MeshSyncPlayerConfig   GetDefaultServerConfig() { return m_defaultServerConfig; }
+    internal MeshSyncServerConfig   GetDefaultServerConfig() { return m_defaultServerConfig; }
     internal SceneCachePlayerConfig GetDefaultSceneCachePlayerConfig() { return m_defaultSceneCachePlayerConfig; }
+
+    internal void ResetDefaultServerConfig() {
+        m_defaultServerConfig = new MeshSyncServerConfig();
+    }
+
+    internal void ResetDefaultSceneCachePlayerConfig() {
+        m_defaultSceneCachePlayerConfig = new SceneCachePlayerConfig() {
+            UpdateMeshColliders = false,
+            ProgressiveDisplay  = false,
+        };            
+        
+    }
     
 //----------------------------------------------------------------------------------------------------------------------
     private void ValidatePlayerConfigs() {
 
         if (null == m_defaultServerConfig) {
-            m_defaultServerConfig = new MeshSyncPlayerConfig();            
+            ResetDefaultServerConfig();
         }
 
         if (null == m_defaultSceneCachePlayerConfig) {
-            m_defaultSceneCachePlayerConfig = new SceneCachePlayerConfig() {
-                UpdateMeshColliders    = false,
-                FindMaterialFromAssets = false,
-                ProgressiveDisplay     = false,
-            };            
+            ResetDefaultSceneCachePlayerConfig();
         }         
     }
 
@@ -90,14 +100,14 @@ internal class MeshSyncProjectSettings : BaseJsonSettings {
 
         if (m_meshSyncProjectSettingsVersion < (int) Version.SEPARATE_SCENE_CACHE_PLAYER_CONFIG) {
             if (null!= m_defaultPlayerConfigs && m_defaultPlayerConfigs.Length >= 2) {
-                m_defaultServerConfig   = m_defaultPlayerConfigs[0];
+                m_defaultServerConfig   = m_defaultPlayerConfigs[0] as MeshSyncServerConfig;
                 m_defaultSceneCachePlayerConfig = new SceneCachePlayerConfig(m_defaultPlayerConfigs[1]);
             }
         }
 
         m_defaultPlayerConfigs = null;
         m_meshSyncProjectSettingsVersion = ClassVersion = LATEST_VERSION;
-        SaveSettings();
+        Save();
     }
     
     
@@ -110,7 +120,7 @@ internal class MeshSyncProjectSettings : BaseJsonSettings {
     [SerializeField] private string m_sceneCacheOutputPath = MeshSyncConstants.DEFAULT_SCENE_CACHE_OUTPUT_PATH;
     
     
-    [SerializeField] private MeshSyncPlayerConfig   m_defaultServerConfig   = null;
+    [SerializeField] private MeshSyncServerConfig   m_defaultServerConfig   = null;
     [SerializeField] private SceneCachePlayerConfig m_defaultSceneCachePlayerConfig = null;
     
 
