@@ -13,7 +13,8 @@ but it has the following differences:
 ## How to use
 
 From the menu, select **Game Object > MeshSync > Create Cache Player**, 
-and then select the *.sc* file exported by the DCC tool.  
+and then select a previously exported *.sc* file, 
+which can be either inside or outside the Unity project.  
 This will automatically create a GameObject with 
 [SceneCachePlayer](#scene-cache-player) component, 
 which will be played automatically in PlayMode.
@@ -25,13 +26,22 @@ Normally, the playback is controlled using an
 [*AnimationClip*](https://docs.unity3d.com/ScriptReference/AnimationClip.html), but 
 we can also control the playback of [Scene Cache in Timeline](SceneCacheInTimeline.md).
 
+## Scene Cache Importer 
+
+![](images/SceneCacheImporter.png)
+
+When an *.sc* file is inside the Unity project, clicking on the *.sc* file 
+will open its import settings in the inspector.
+These import settings are similar to the [import properties](CommonMeshSyncProperties.md#import) in the inspector, 
+and can be overridden in the inspector as well.
+
 ## Scene Cache Player 
 
 This component handles the playback of an *.sc* file. 
 
 ### Properties
 
-<img align="right" src="images/SceneCachePlayer.png" height="480">
+![](images/SceneCachePlayer.png)
 
 - **Cache File Path**: the path to the *.sc* file.  
   Copying the cache file to StreamingAssets is recommended, and can be done by simply clicking the **Copy** button.  
@@ -47,10 +57,7 @@ This component handles the playback of an *.sc* file.
   Smoothens animations by interpolating the meshes and transforms between neighboring frames.   
   Note that meshes are only interpolated if the topologies match (the vertex indexes remain unchanged).
 
-SceneCache shares a lot of properties with MeshSyncServer.  
-Please refer to [MeshSyncServer](MeshSyncServer.md)'s documentation for more details.
-
-
+Please refer to [common properties](CommonMeshSyncProperties.md) for details on the other properties.
 
 ### Tips
 
