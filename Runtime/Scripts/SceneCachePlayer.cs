@@ -1,7 +1,6 @@
 using System;
 using System.Text;
 using JetBrains.Annotations;
-using Unity.FilmInternalUtilities;
 using UnityEngine;
 using UnityEngine.Assertions;
 using UnityEngine.Serialization;
@@ -201,6 +200,10 @@ public class SceneCachePlayer : BaseMeshSync {
         if (m_sceneCache)
             return m_sceneCache.GetSceneByTime(m_timePrev, m_interpolation);
         return default(SceneData);
+    }
+
+    void SavePrefabInEditor() {
+        PrefabUtility.RecordPrefabInstancePropertyModifications(this);
     }
     
 #endif //UNITY_EDITOR    
@@ -459,9 +462,12 @@ public class SceneCachePlayer : BaseMeshSync {
 
 //----------------------------------------------------------------------------------------------------------------------    
     protected override void OnEnable() {
-
-        
         base.OnEnable();
+        
+#if UNITY_EDITOR
+        m_onMaterialChangedInSceneViewCB += SavePrefabInEditor; 
+#endif
+        
         m_animator = GetComponent<Animator>();
         if (!string.IsNullOrEmpty(m_sceneCacheFilePath)) {
             OpenCacheInternal(m_sceneCacheFilePath);
@@ -476,6 +482,10 @@ public class SceneCachePlayer : BaseMeshSync {
 
     protected override void OnDisable() {
         base.OnDisable();
+#if UNITY_EDITOR
+        m_onMaterialChangedInSceneViewCB -= SavePrefabInEditor; 
+#endif
+        
         CloseCache();
     }
 
@@ -485,7 +495,7 @@ public class SceneCachePlayer : BaseMeshSync {
     void LateUpdate() {
         UpdatePlayer( updateNonMaterialAssets: false);
     }
-    #endregion
+    #endregion //Events
 
 //----------------------------------------------------------------------------------------------------------------------
     

@@ -151,77 +151,80 @@ internal abstract class BaseMeshSyncInspector : UnityEditor.Editor {
 
         return changed;
     }
+    
+//----------------------------------------------------------------------------------------------------------------------
+    internal static bool DrawMaterialList(BaseMeshSync t, bool allowFold = true) {
 
-    public static void DrawMaterialList(BaseMeshSync t, bool allowFold = true)
-    {
-        Action drawInExportButton = () =>
-        {
-            GUILayout.BeginHorizontal();
-            if (GUILayout.Button("Import List", GUILayout.Width(110.0f)))
-            {
-                var path = EditorUtility.OpenFilePanel("Import material list", "Assets", "asset");
-                t.ImportMaterialList(path);
-            }
-            if (GUILayout.Button("Export List", GUILayout.Width(110.0f)))
-            {
-                var path = EditorUtility.SaveFilePanel("Export material list", "Assets", t.name + "_MaterialList", "asset");
-                t.ExportMaterialList(path);
-            }
-            GUILayout.EndHorizontal();
-        };
-
-        if (allowFold)
-        {
+        //[TODO-sin: 2021-12-7] Refactor. Remove allowFold
+        bool changed = false;
+        if (allowFold) {
             var styleFold = EditorStyles.foldout;
             styleFold.fontStyle = FontStyle.Bold;
             t.foldMaterialList = EditorGUILayout.Foldout(t.foldMaterialList, "Materials", true, styleFold);
-            if (t.foldMaterialList)
-            {
-                DrawMaterialListElements(t);
-                drawInExportButton();
-                if (GUILayout.Button("Open Material Window", GUILayout.Width(160.0f)))
-                    MaterialWindow.Open(t);
-                EditorGUILayout.Space();
-            }
-        }
-        else
-        {
+            if (!t.foldMaterialList) 
+                return false;
+            
+            changed = DrawMaterialListElements(t);
+            DrawMaterialImportExportButtons(t);
+            if (GUILayout.Button("Open Material Window", GUILayout.Width(160.0f)))
+                MaterialWindow.Open(t);
+            EditorGUILayout.Space();
+        } else  {
             GUILayout.Label("Materials", EditorStyles.boldLabel);
-            DrawMaterialListElements(t);
-            drawInExportButton();
+            changed = DrawMaterialListElements(t);
+            DrawMaterialImportExportButtons(t);
         }
-    }
 
-    static void DrawMaterialListElements(BaseMeshSync t)
-    {
+        return changed;
+    }
+    static void DrawMaterialImportExportButtons(BaseMeshSync t) {
+        GUILayout.BeginHorizontal();
+        if (GUILayout.Button("Import List", GUILayout.Width(110.0f))) {
+            var path = EditorUtility.OpenFilePanel("Import material list", "Assets", "asset");
+            t.ImportMaterialList(path);
+        }
+
+        if (GUILayout.Button("Export List", GUILayout.Width(110.0f))) {
+            var path = EditorUtility.SaveFilePanel("Export material list", "Assets", t.name + "_MaterialList", "asset");
+            t.ExportMaterialList(path);
+        }
+
+        GUILayout.EndHorizontal();
+    }
+    
+
+    //returns true if changed
+    static bool DrawMaterialListElements(BaseMeshSync t) {
         // calculate label width
         float labelWidth = 60; // minimum
         {
-            var style = GUI.skin.box;
-            foreach (var md in t.materialList)
-            {
-                var size = style.CalcSize(new GUIContent(md.name));
+            GUIStyle style = GUI.skin.box;
+            foreach (MaterialHolder md in t.materialList) {
+                Vector2 size = style.CalcSize(new GUIContent(md.name));
                 labelWidth = Mathf.Max(labelWidth, size.x);
             }
             // 100: margin for color and material field
             labelWidth = Mathf.Min(labelWidth, EditorGUIUtility.currentViewWidth - 100);
         }
 
-        foreach (var md in t.materialList)
-        {
-            var rect = EditorGUILayout.BeginHorizontal();
-            EditorGUI.DrawRect(new Rect(rect.x, rect.y, 16, 16), md.color);
+        bool changed = false;
+        foreach (MaterialHolder matHolder in t.materialList) {
+            Rect rect = EditorGUILayout.BeginHorizontal();
+            EditorGUI.DrawRect(new Rect(rect.x, rect.y, 16, 16), matHolder.color);
             EditorGUILayout.LabelField("", GUILayout.Width(16));
-            EditorGUILayout.LabelField(md.name, GUILayout.Width(labelWidth));
+            EditorGUILayout.LabelField(matHolder.name, GUILayout.Width(labelWidth));
             {
-                var tmp = EditorGUILayout.ObjectField(md.material, typeof(Material), true) as Material;
-                if (tmp != md.material)
-                    t.AssignMaterial(md, tmp);
+                Material destMat = EditorGUILayout.ObjectField(matHolder.material, typeof(Material), true) as Material;
+                if (destMat != matHolder.material) {
+                    t.AssignMaterial(matHolder, destMat);
+                    changed = true;
+                }
             }
             EditorGUILayout.EndHorizontal();
         }
-    }
 
+        return changed;
+    }
 
 //----------------------------------------------------------------------------------------------------------------------        
 
