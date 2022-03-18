@@ -64,15 +64,14 @@ internal class MeshSyncPlayerConfigSection {
 //----------------------------------------------------------------------------------------------------------------------        
     internal void Setup(VisualElement parent) {
         
-        bool isSceneCachePlayerConfig = (m_playerType == MeshSyncPlayerType.CACHE_PLAYER);
-        MeshSyncPlayerConfig config   = null;
-        if (isSceneCachePlayerConfig) {
-            config = MeshSyncProjectSettings.GetOrCreateSettings().GetDefaultSceneCachePlayerConfig();
-        } else {
-            config = MeshSyncProjectSettings.GetOrCreateSettings().GetDefaultServerConfig();
-        }
-            
-        
+        bool                    isSceneCachePlayerConfig = (m_playerType == MeshSyncPlayerType.CACHE_PLAYER);
+        MeshSyncProjectSettings projectSettings          = MeshSyncProjectSettings.GetOrCreateInstance(); 
+        MeshSyncPlayerConfig    config                   = null;
+        config = isSceneCachePlayerConfig
+            ? (MeshSyncPlayerConfig)projectSettings.GetDefaultSceneCachePlayerConfig()
+            : projectSettings.GetDefaultServerConfig();
+
+
         TemplateContainer containerInstance = InstantiateContainer(m_playerType);
         parent.Add(containerInstance);
             
@@ -164,37 +163,10 @@ internal class MeshSyncPlayerConfigSection {
             (bool newValue) => { config.Profiling = newValue; }
         );
         
-        //Animation Tweak
-        Foldout atsFoldout = containerInstance.Query<Foldout>("AnimationTweakSettingsFoldout").First();
-        AnimationTweakSettings ats = config.GetAnimationTweakSettings();
-        AddPlayerConfigField<FloatField, float>(atsFoldout, Contents.TweakTimeScale,ats.TimeScale,
-            (float newValue) => { ats.TimeScale = newValue; }
-        );
-        AddPlayerConfigField<FloatField, float>(atsFoldout, Contents.TweakTimeOffset,ats.TimeOffset,
-            (float newValue) => { ats.TimeOffset = newValue; }
-        );
-        AddPlayerConfigField<IntegerField, int>(atsFoldout, Contents.TweakDropStep,ats.DropStep,
-            (int newValue) => { ats.DropStep = newValue; }
-        );
-        AddPlayerConfigField<FloatField, float>(atsFoldout, Contents.TweakReductionThreshold,ats.ReductionThreshold,
-            (float newValue) => { ats.ReductionThreshold = newValue; }
-        );
-        AddPlayerConfigField<Toggle, bool>(atsFoldout, Contents.TweakEraseFlatCurves,ats.EraseFlatCurves,
-            (bool newValue) => { ats.EraseFlatCurves = newValue; }
-        );
                 
         if (!isSceneCachePlayerConfig) 
             return;
         
-        //Additional UI for SceneCache
-        SceneCachePlayerConfig scPlayerConfig = config as SceneCachePlayerConfig;
-        Assert.IsNotNull(scPlayerConfig);
-        Foldout timelineSettingsFoldout = containerInstance.Query<Foldout>("TimelineSettingsFoldout").First();
-        AddPlayerConfigPopupField(timelineSettingsFoldout, 
-            Contents.TimelineSnapToFrame, m_snapToFrameEnums,m_snapToFrameEnums[scPlayerConfig.TimelineSnapToFrame],
-            (int newValue) => { scPlayerConfig.TimelineSnapToFrame = newValue;}
-        );
-
     }
 
     
@@ -211,7 +183,7 @@ internal class MeshSyncPlayerConfigSection {
                 return;
                                         
             onValueChanged(changeEvent.newValue);
-            MeshSyncProjectSettings.GetOrCreateSettings().Save();
+            MeshSyncProjectSettings.GetOrCreateInstance().SaveInEditor();
         });
 
         field.AddToClassList("general-settings-field");
@@ -235,7 +207,7 @@ internal class MeshSyncPlayerConfigSection {
                     return;
             
                 onValueChanged(targetField.index);
-                MeshSyncProjectSettings.GetOrCreateSettings().Save();                
+                MeshSyncProjectSettings.GetOrCreateInstance().SaveInEditor();                
             }
         );        
         popupField.AddToClassList("general-settings-field");
@@ -305,8 +277,6 @@ internal class MeshSyncPlayerConfigSection {
     private readonly List<string> m_animationInterpolationEnums = new List<string>(Enum.GetNames( typeof( InterpolationMode )));
     private readonly List<string> m_zUpCorrectionEnums = new List<string>(Enum.GetNames( typeof( ZUpCorrectionMode )));
     private readonly List<string> m_assetSearchModeEnums = EnumUtility.ToInspectorNames(typeof(AssetSearchMode));
-
-    private readonly List<string> m_snapToFrameEnums = EnumUtility.ToInspectorNames(typeof(SnapToFrame));
     
 }
 

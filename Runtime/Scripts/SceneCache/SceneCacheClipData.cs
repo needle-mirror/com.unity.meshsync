@@ -116,24 +116,33 @@ internal class SceneCacheClipData : BaseClipData {
 //----------------------------------------------------------------------------------------------------------------------
     [CanBeNull]
     private static AnimationCurve ExtractNormalizedTimeCurve(SceneCachePlayer scPlayer, out float endTime) {
-        AnimationCurve origTimeCurve = scPlayer.GetTimeCurve();
 
-        if (null == origTimeCurve) {
+        ISceneCacheInfo sceneCacheInfo = scPlayer.ExtractSceneCacheInfo(forceOpen:true);
+        if (null == sceneCacheInfo) {
             endTime = 0;
             return null;
         }
-
-        TimeRange timeRange = scPlayer.GetTimeRange();
-        endTime = timeRange.end;
+        
+        endTime = sceneCacheInfo.GetTimeRange().end;
         if (endTime <= 0f) {
             endTime = Mathf.Epsilon;
         }
 
-        Keyframe[] keyframes = origTimeCurve.keys;
+        Keyframe[] keyframes = sceneCacheInfo.GetTimeCurve().keys;
         int numKeyframes = keyframes.Length;
         for (int i = 0; i < numKeyframes; ++i) {
             keyframes[i].value /= endTime;
-        }        
+        }
+        
+        //outTangent
+        for (int i = 0; i < numKeyframes-1; ++i) {
+            keyframes[i].outTangent = CalculateLinearTangent(keyframes, i, i+1);
+        }
+        
+        //inTangent
+        for (int i = 1; i < numKeyframes; ++i) {
+            keyframes[i].inTangent = CalculateLinearTangent(keyframes, i-1, i);
+        }
         
         AnimationCurve curve = new AnimationCurve(keyframes);        
         return curve;
@@ -141,6 +150,11 @@ internal class SceneCacheClipData : BaseClipData {
     
 //----------------------------------------------------------------------------------------------------------------------
 
+    private static float CalculateLinearTangent(Keyframe[] keyFrames, int index, int toIndex) {
+        return (float) (((double) keyFrames[index].value - (double) keyFrames[toIndex].value) 
+            / ((double) keyFrames[index].time - (double) keyFrames[toIndex].time));
+    }
+    
     private static AnimationCurve CreateLinearAnimationCurve(TimelineClip clip) {
         return AnimationCurve.Linear(0f, 0f,(float) (clip.duration * clip.timeScale), 1f );        
     }
@@ -209,11 +223,17 @@ internal class SceneCacheClipData : BaseClipData {
 //----------------------------------------------------------------------------------------------------------------------
     internal void           SetAnimationCurve(AnimationCurve curve) { m_animationCurve = curve; }
     internal AnimationCurve GetAnimationCurve()                     {  return m_animationCurve; }
-        
+
+    internal SceneCachePlayer GetSceneCachePlayer() =>m_scPlayer;
+
+    internal LimitedAnimationController GetOverrideLimitedAnimationController() { return m_overrideLimitedAnimationController; }    
+    
 //----------------------------------------------------------------------------------------------------------------------
    
     [SerializeField] private AnimationCurve   m_animationCurve;
     [SerializeField] private bool             m_initialized = false;
+
+    [SerializeField] private LimitedAnimationController m_overrideLimitedAnimationController = new LimitedAnimationController();
 
 #pragma warning disable 414    
     [HideInInspector][SerializeField] private int m_sceneCacheClipDataVersion = CUR_SCENE_CACHE_CLIP_DATA_VERSION; 

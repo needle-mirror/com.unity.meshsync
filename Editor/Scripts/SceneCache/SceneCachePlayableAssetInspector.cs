@@ -23,14 +23,17 @@ internal class SceneCachePlayableAssetInspector : UnityEditor.Editor {
         
         SerializedObject so = serializedObject;
         EditorGUILayout.PropertyField(so.FindProperty("m_sceneCachePlayerRef"), SCENE_CACHE_PLAYER);
+
+        SceneCacheClipData clipData = m_scPlayableAsset.GetBoundClipData();
+        if (null == clipData)
+            return;
+
+        SceneCachePlayer scPlayer = clipData.GetSceneCachePlayer();
+        if (null == scPlayer)
+            return;
+
+        DrawLimitedAnimationGUI(clipData);
         
-        EditorGUIDrawerUtility.DrawUndoableGUI(m_scPlayableAsset, "SceneCache: Snap",            
-            guiFunc: () => {
-                SnapToFrame snap = m_scPlayableAsset.GetSnapToFrame();
-                return (SnapToFrame)EditorGUILayout.EnumPopup(Contents.SnapToFrame, snap);
-            }, 
-            updateFunc: (SnapToFrame snap) => { m_scPlayableAsset.SetSnapToFrame(snap); });
-                
         {
             // Curve Operations
             GUILayout.BeginVertical("Box");
@@ -39,19 +42,48 @@ internal class SceneCachePlayableAssetInspector : UnityEditor.Editor {
             const float BUTTON_X     = 30;
             const float BUTTON_WIDTH = 160f;
             if (DrawGUIButton(BUTTON_X, BUTTON_WIDTH,"To Linear")) {
-                SceneCacheClipData clipData = m_scPlayableAsset.GetBoundClipData();
-                clipData?.SetCurveToLinear();
+                clipData.SetCurveToLinear();
             }
             
             if (DrawGUIButton(BUTTON_X, BUTTON_WIDTH,"Apply Original")) {
-                SceneCacheClipData clipData = m_scPlayableAsset.GetBoundClipData();
-                clipData?.ApplyOriginalSceneCacheCurve();                
+                clipData.ApplyOriginalSceneCacheCurve();
             }
             
             GUILayout.EndVertical();                    
         }
         
         so.ApplyModifiedProperties();       
+    }
+
+//----------------------------------------------------------------------------------------------------------------------
+    private void DrawLimitedAnimationGUI(SceneCacheClipData clipData) {
+        SceneCachePlayer scPlayer = clipData.GetSceneCachePlayer();
+        
+        bool disableScope = null == scPlayer;
+        
+        if (null != scPlayer) {
+            disableScope |= (!scPlayer.IsLimitedAnimationOverrideable());
+        }
+
+        if (disableScope) {
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.HelpBox(
+                "Disabled because Limited Animation settings on the SceneCache GameObject is enabled, or the playback mode is set to interpolate", 
+                MessageType.Warning
+            );
+            if (GUILayout.Button("Fix", GUILayout.Width(64), GUILayout.Height(36))) {
+                scPlayer.AllowLimitedAnimationOverride();
+                Repaint();
+            }
+            EditorGUILayout.EndHorizontal();
+            
+        }
+
+        using (new EditorGUI.DisabledScope(disableScope)) {
+            SceneCachePlayerEditorUtility.DrawLimitedAnimationGUI(clipData.GetOverrideLimitedAnimationController(),
+                m_scPlayableAsset, scPlayer);
+        }
+        
     }
 
 //----------------------------------------------------------------------------------------------------------------------

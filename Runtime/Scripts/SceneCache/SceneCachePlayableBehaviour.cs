@@ -1,7 +1,6 @@
 ﻿using Unity.FilmInternalUtilities;
 using UnityEngine;
 using UnityEngine.Playables;
-using UnityEngine.Timeline;
 
 namespace Unity.MeshSync
 {
@@ -17,50 +16,82 @@ internal class SceneCachePlayableBehaviour : PlayableBehaviour {
     }
 
     internal void SetClipData(SceneCacheClipData clipData) { m_clipData = clipData; } 
-    internal void SetSnapToFrame(SnapToFrame snap) { m_snapToFrame = snap; } 
     
 //----------------------------------------------------------------------------------------------------------------------        
     
+    public override void OnPlayableDestroy(Playable playable) {
+        //Check if OnBehaviourPause() was disabling the gameobject when the playable is deleted
+        if (!m_isGameObjectActive && m_lastActiveChangedTime == Time.frameCount) {
+            ActivateGameObject(true);
+        }
+    }
+    
+    public override void OnBehaviourPlay(Playable playable, FrameData info) {
+        ActivateGameObject(true);
+    }
+    
 
+    public override void OnBehaviourPause(Playable playable, FrameData info) {        
+        ActivateGameObject(false);
+    }
+    
     public override void ProcessFrame(Playable playable, FrameData info, object playerData) {
-        if (m_sceneCachePlayer.IsNullRef()) {
+        if (null == m_sceneCachePlayer) {
             return;
         }
         AnimationCurve curve = m_clipData.GetAnimationCurve();
-
-        float normalizedTime = 0;
-        switch (m_snapToFrame) {
-            case SnapToFrame.NONE: {
-                normalizedTime = curve.Evaluate((float) playable.GetTime());
-                break;                 
-            }
-            case SnapToFrame.NEAREST: {
-
-                TrackAsset trackAsset = m_clipData.GetOwner().GetParentTrack();
-                if (null == trackAsset) {
-                    return;
-                }
-                     
-                float fps = (float) trackAsset.timelineAsset.editorSettings.GetFPS();
-                
-                float timePerFrame = 1.0f / fps;
-                int   frame        = Mathf.RoundToInt((float)playable.GetTime() * fps);
-                normalizedTime = curve.Evaluate(frame * timePerFrame);
-                break;
-            }            
-        }
+        
+        double t = CalculateTimeForLimitedAnimation((float) playable.GetTime());        
+        float normalizedTime = curve.Evaluate((float)t);
               
-        m_sceneCachePlayer.RequestNormalizedTime(normalizedTime);
-
+        m_sceneCachePlayer.SetAutoplay(false);
+        m_sceneCachePlayer.SetTimeByNormalizedTime(normalizedTime);
+        
+        //Might have been deactivated if there is another clip with the same SceneCache in the same track
+        ActivateGameObject(true); 
     }
 
-    
+    private double CalculateTimeForLimitedAnimation(double time) {
+        LimitedAnimationController origLimitedAnimationController = m_sceneCachePlayer.GetLimitedAnimationController();
+        if (origLimitedAnimationController.IsEnabled()) //do nothing if LA is set on the target SceneCache
+            return time;
+        
+        LimitedAnimationController clipLimitedAnimationController = m_clipData.GetOverrideLimitedAnimationController();
+        if (!clipLimitedAnimationController.IsEnabled())
+            return time;
+
+        ISceneCacheInfo scInfo = m_sceneCachePlayer.ExtractSceneCacheInfo(forceOpen: true);
+        if (null == scInfo)
+            return time;
+            
+        int frame = m_sceneCachePlayer.CalculateFrame((float)time,clipLimitedAnimationController);
+        return frame / scInfo.GetSampleRate();
+    }
+
 //----------------------------------------------------------------------------------------------------------------------
-    
-    private SceneCachePlayer m_sceneCachePlayer = null;
+
+    private void ActivateGameObject(bool active) {
+        if (null == m_sceneCachePlayer)
+            return;
+
+        GameObject go = m_sceneCachePlayer.gameObject;
+        if (go.activeSelf == active)
+            return;
+        
+        go.SetActive(active);
+        
+        m_isGameObjectActive    = go.activeSelf;
+        m_lastActiveChangedTime = Time.frameCount;
+    }
+//----------------------------------------------------------------------------------------------------------------------
+
+    private SceneCachePlayer m_sceneCachePlayer  = null;
     
     private SceneCacheClipData m_clipData = null;
-    private SnapToFrame        m_snapToFrame;
+    
+    private int m_lastActiveChangedTime = 0;
+    private bool  m_isGameObjectActive = false;
+    
 }
 
 } //end namespace
