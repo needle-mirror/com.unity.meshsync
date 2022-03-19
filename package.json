@@ -1,7 +1,7 @@
 {
   "name": "com.unity.meshsync",
   "description": "Working together with MeshSyncDCCPlugin, MeshSync provides features to reflect changes to models made in DCC tools into Unity in real time",
-  "version": "0.12.2-preview",
+  "version": "0.12.3-preview",
   "unity": "2019.4",
   "displayName": "MeshSync",
   "dependencies": {
@@ -17,14 +17,14 @@
     "com.unity.timeline": "1.2.14"
   },
   "upm": {
-    "changelog": "### Fixed,* fix: keep SceneCache objects active when clicking pause in TimelineWindow"
+    "changelog": "### Fixed\r\n* fix: the performance of SceneCache in Timeline by not reloading every time"
   },
   "upmCi": {
-    "footprint": "e5ff1e80b95b74dd0b2f7bcc2c346266861a1bc5"
+    "footprint": "aa7ee3370ffabdc48293643eb24389e47fe1b8e0"
   },
   "repository": {
     "url": "https://github.com/unity3d-jp/MeshSync.git",
     "type": "git",
-    "revision": "31c837dbdf8e8f473a1889ba9a09bdaa14a068e2"
+    "revision": "aede4c4e3694e1158f15a1f6743e05a910d1faa4"
   }
 }
