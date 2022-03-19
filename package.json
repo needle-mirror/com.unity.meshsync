@@ -1,7 +1,7 @@
 {
   "name": "com.unity.meshsync",
   "description": "Working together with MeshSyncDCCPlugin, MeshSync provides features to reflect changes to models made in DCC tools into Unity in real time",
-  "version": "0.12.1-preview",
+  "version": "0.12.2-preview",
   "unity": "2019.4",
   "displayName": "MeshSync",
   "dependencies": {
@@ -17,14 +17,14 @@
     "com.unity.timeline": "1.2.14"
   },
   "upm": {
-    "changelog": "### Added,* feat: show SceneCachePlayer basic info in the inspector,* feat: add extrapolation capabilities for SceneCachePlayableAsset,* feat: override LimitedAnimation in SceneCachePlayableAsset,### Changed,* change: the default frames to hold for Limited Animation to 2,### Fixed,* fix: set the in and out tangent of the keys of SceneCachePlayableAsset,* fix: properly create SceneCachePlayableAsset clips when the SceneCachePlayer object is disabled ,* fix: clamp frameOffset after setting num frames to hold for limited animatio,* fix: hide fields in the inspector SceneCachePlayableAsset for invalid SceneCache"
+    "changelog": "### Fixed,* fix: keep SceneCache objects active when clicking pause in TimelineWindow"
   },
   "upmCi": {
-    "footprint": "c6bf8ae88b6e21334ae9d877b9b2ab920819fe6b"
+    "footprint": "e5ff1e80b95b74dd0b2f7bcc2c346266861a1bc5"
   },
   "repository": {
     "url": "https://github.com/unity3d-jp/MeshSync.git",
     "type": "git",
-    "revision": "bc81af05317fd5189099173d703237869ac9e314"
+    "revision": "31c837dbdf8e8f473a1889ba9a09bdaa14a068e2"
   }
 }
