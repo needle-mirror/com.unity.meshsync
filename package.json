@@ -1,11 +1,11 @@
 {
   "name": "com.unity.meshsync",
   "description": "Working together with MeshSyncDCCPlugin, MeshSync provides features to reflect changes to models made in DCC tools into Unity in real time",
-  "version": "0.12.6-preview",
+  "version": "0.12.7-preview",
   "unity": "2019.4",
   "displayName": "MeshSync",
   "dependencies": {
-    "com.unity.film-internal-utilities": "0.13.0-preview",
+    "com.unity.film-internal-utilities": "0.14.1-preview",
     "com.unity.editorcoroutines": "1.0.0",
     "com.unity.modules.audio": "1.0.0",
     "com.unity.modules.animation": "1.0.0",
@@ -14,17 +14,17 @@
     "com.unity.modules.particlesystem": "1.0.0",
     "com.unity.modules.screencapture": "1.0.0",
     "com.unity.sharp-zip-lib": "1.2.2-preview.2",
-    "com.unity.timeline": "1.2.14"
+    "com.unity.timeline": "1.2.18"
   },
   "upm": {
-    "changelog": "### Changed\r\n* change: only update the duration of SceneCachePlayableAsset when creating a new clip\r\n\r\n### Fixed\r\n* fix: the left SceneCachePlayableAsset clip after split was not updated \r\n* fix: copy LimitedAnimation values properly to duplicated SceneCachePlayableAsset\r\n* fix: importing previous version of LimitedAnimation did not work"
+    "changelog": "### Changed\r\n* deps: use com.unity.film-internal-utilities@0.14.1-preview \r\n\r\n### Fixed\r\n* fix: ensure the correct clip is the one setting SceneCache timing"
   },
   "upmCi": {
-    "footprint": "d0a2b2c009ce5d0d3a9db1ec581e754162cc9f23"
+    "footprint": "7356a550dd9df6b7f88f66379b21678ebe70a892"
   },
   "repository": {
     "url": "https://github.com/unity3d-jp/MeshSync.git",
     "type": "git",
-    "revision": "4de51050b21812622f1166ffba1f113e9bb9edd0"
+    "revision": "2c9fdcf45cf510f4f1f77c43abaed1172bd56a8a"
   }
 }
