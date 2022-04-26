@@ -9,14 +9,42 @@ namespace Unity.MeshSync
 /// The type of messages that can be sent to MeshSyncServer 
 /// </summary>
 public enum NetworkMessageType {
+    /// <summary>
+    /// An unknown message
+    /// </summary>
     Unknown,
+    /// <summary>
+    /// A get message
+    /// </summary>
     Get,
+    /// <summary>
+    /// A Set message
+    /// </summary>
     Set,
+    /// <summary>
+    /// A delete message
+    /// </summary>
     Delete,
+    /// <summary>
+    /// A fence message
+    /// </summary>
     Fence,
+    
+    /// <summary>
+    /// A text message
+    /// </summary>
     Text,
+    /// <summary>
+    /// A screenshot message
+    /// </summary>
     Screenshot,
+    /// <summary>
+    /// A query message
+    /// </summary>
     Query,
+    /// <summary>
+    /// A response message
+    /// </summary>
     Response,
 }
 
@@ -69,6 +97,10 @@ internal struct DeleteMessage {
     [DllImport(Lib.name)] static extern Identifier msDeleteGetEntity(IntPtr self, int i);
     [DllImport(Lib.name)] static extern int msDeleteGetNumMaterials(IntPtr self);
     [DllImport(Lib.name)] static extern Identifier msDeleteGetMaterial(IntPtr self, int i);
+    
+    [DllImport(Lib.name)] static extern int msDeleteGetNumInstances(IntPtr self);
+    
+    [DllImport(Lib.name)] static extern Identifier msDeleteGetInstance(IntPtr self, int i);
     #endregion
 
     public static explicit operator DeleteMessage(IntPtr v) {
@@ -82,6 +114,16 @@ internal struct DeleteMessage {
 
     public int numMaterials { get { return msDeleteGetNumMaterials(self); } }
     internal Identifier GetMaterial(int i) { return msDeleteGetMaterial(self, i); }
+    
+    public int numInstances
+    {
+        get { return msDeleteGetNumInstances((self)); }
+    }
+
+    internal Identifier GetInstance(int i)
+    {
+        return msDeleteGetInstance(self, i);
+    }
 }
 //----------------------------------------------------------------------------------------------------------------------
 

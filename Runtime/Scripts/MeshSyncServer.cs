@@ -25,7 +25,7 @@ public class MeshSyncServer : BaseMeshSync {
 //----------------------------------------------------------------------------------------------------------------------
     
     
-    protected override void InitInternalV() {
+    private protected override void InitInternalV() {
         
     }
 
@@ -142,11 +142,11 @@ public class MeshSyncServer : BaseMeshSync {
 
 //----------------------------------------------------------------------------------------------------------------------
 
-    protected override void OnBeforeSerializeMeshSyncPlayerV() {
+    private protected override void OnBeforeSerializeMeshSyncPlayerV() {
         
     }
 
-    protected override void OnAfterDeserializeMeshSyncPlayerV() {
+    private protected override void OnAfterDeserializeMeshSyncPlayerV() {
         m_serverVersion = CUR_SERVER_VERSION;
         
         if (string.IsNullOrEmpty(GetAssetsFolder())) {
@@ -230,6 +230,15 @@ public class MeshSyncServer : BaseMeshSync {
     }
 
     void OnRecvDelete(DeleteMessage mes) {
+
+        int numInstanceMeshes = mes.numInstances;
+        for (int i = 0; i < numInstanceMeshes; i++)
+        {
+            var instance = mes.GetInstance(i);
+            EraseInstanceInfoRecord(instance);
+            EraseInstancedEntityRecord(instance);
+        }
+
         int numEntities = mes.numEntities;
         for (int i = 0; i < numEntities; ++i)
             EraseEntityRecord(mes.GetEntity(i));
@@ -465,14 +474,14 @@ public class MeshSyncServer : BaseMeshSync {
 #endif
 
 
-    protected override void OnEnable() {
+    private protected override void OnEnable() {
         base.OnEnable();
         if (m_autoStartServer) {
             m_requestRestartServer = true;
         }
     }
 
-    protected override void OnDisable() {
+    private protected override void OnDisable() {
         base.OnDisable();
         StopServer();
     }
