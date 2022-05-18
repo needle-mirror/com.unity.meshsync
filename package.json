@@ -1,11 +1,11 @@
 {
   "name": "com.unity.meshsync",
   "description": "Working together with MeshSyncDCCPlugin, MeshSync provides features to reflect changes to models made in DCC tools into Unity in real time",
-  "version": "0.13.0-preview",
+  "version": "0.13.1-preview",
   "unity": "2019.4",
   "displayName": "MeshSync",
   "dependencies": {
-    "com.unity.film-internal-utilities": "0.15.0-preview",
+    "com.unity.film-internal-utilities": "0.15.1-preview",
     "com.unity.editorcoroutines": "1.0.0",
     "com.unity.modules.audio": "1.0.0",
     "com.unity.modules.animation": "1.0.0",
@@ -13,18 +13,18 @@
     "com.unity.modules.director": "1.0.0",
     "com.unity.modules.particlesystem": "1.0.0",
     "com.unity.modules.screencapture": "1.0.0",
-    "com.unity.sharp-zip-lib": "1.2.2-preview.2",
+    "com.unity.sharp-zip-lib": "1.3.0-preview",
     "com.unity.timeline": "1.2.18"
   },
-  "upm": {
-    "changelog": "### Added\r\n* feat: Instance rendering \r\n* doc: Geometry Nodes documentation\r\n\r\n### Changed\r\n* change: make some classes/functions/members to internal \r\n\r\n### Fixed\r\n* plugin-fix: support Mac OSX starting from 10.12"
+  "_upm": {
+    "changelog": "### Added\n* feat: light probes support for instance rendering\n\n### Changed\n* deps: use com.unity.film-internal-utilities@0.15.1-preview"
   },
   "upmCi": {
-    "footprint": "802d636a35cbb1e663b4a868e4cd8faf350f488e"
+    "footprint": "45a27d4f95ef808d32e2a68d548a9dbf98d327b8"
   },
   "repository": {
     "url": "https://github.com/unity3d-jp/MeshSync.git",
     "type": "git",
-    "revision": "421f38e1833ea2cb6896bb07d4ce78dc2d72704c"
+    "revision": "3f80dcfb28d7edcf5b645ce5f7228e3c080f5084"
   }
 }
