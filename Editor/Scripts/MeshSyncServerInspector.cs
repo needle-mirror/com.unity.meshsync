@@ -1,12 +1,13 @@
-using Unity.FilmInternalUtilities;
+using System.Collections.Generic;
 using Unity.FilmInternalUtilities.Editor;
 using UnityEditor;
 using UnityEngine;
 
 namespace Unity.MeshSync.Editor  {
 [CustomEditor(typeof(MeshSyncServer))]
-internal class MeshSyncServerInspector : BaseMeshSyncInspector   {
-    
+[InitializeOnLoad]
+internal class MeshSyncServerInspector : BaseMeshSyncInspector {
+    private const string OPT_OUT_INSTANCE_HANDLING = "MeshSync.InstanceHandling.OptOut";
 
 //----------------------------------------------------------------------------------------------------------------------
 
@@ -26,6 +27,8 @@ internal class MeshSyncServerInspector : BaseMeshSyncInspector   {
         DrawMiscSettings(m_meshSyncServer);
         DrawDefaultMaterialList(m_meshSyncServer);
         DrawExportAssets(m_meshSyncServer);
+        DrawInstanceSettings(m_meshSyncServer);
+        DrawDCCToolInfo(m_meshSyncServer);
         DrawPluginVersion();
 
         PrefabUtility.RecordPrefabInstancePropertyModifications(m_meshSyncServer);
@@ -82,6 +85,84 @@ internal class MeshSyncServerInspector : BaseMeshSyncInspector   {
             t.SetRootObject(rootObject);
             
             EditorGUILayout.Space();
+        }
+    }
+
+    private void DrawInstanceSettings(MeshSyncServer t) {
+        var style = EditorStyles.foldout;
+        style.fontStyle        = FontStyle.Bold;
+        t.foldInstanceSettings = EditorGUILayout.Foldout(t.foldInstanceSettings, "Instances", true, style);
+        if (t.foldInstanceSettings) {
+            var newInstanceHandling =
+                (BaseMeshSync.InstanceHandlingType)EditorGUILayout.EnumPopup("Instance handling", t.InstanceHandling);
+
+            if (t.InstanceHandling != newInstanceHandling &&
+                EditorUtility.DisplayDialog("Warning",
+                    "Changing the instance handling mode will delete any prefabs and previously synced objects for this server. Are you sure you want to do this?",
+                    "Yes", "No", DialogOptOutDecisionType.ForThisSession, OPT_OUT_INSTANCE_HANDLING)) {
+                t.InstanceHandling = newInstanceHandling;
+            }
+
+            DrawPrefabListElement(t);
+        }
+
+        EditorGUILayout.LabelField($"Instance count: {t.InstanceCount}");
+    }
+
+    static void DrawPrefabListElement(MeshSyncServer t)
+    {
+        if (t.prefabDict.Count > 0)
+        {
+            EditorGUILayout.LabelField("Instance prefabs:");
+
+            EditorGUI.indentLevel++;
+            foreach (var prefabHolder in t.prefabDict.Values)
+            {
+                EditorGUILayout.ObjectField(prefabHolder.name, prefabHolder.prefab, typeof(GameObject), true);
+            }
+            EditorGUI.indentLevel--;
+
+            if (GUILayout.Button("Clear prefabs"))
+            {
+                t.ClearInstancePrefabs();
+            }
+        }
+    }
+
+    static void DrawDCCToolInfo(MeshSyncServer server)
+    {
+        if (server != null)
+        {
+            GUILayout.BeginHorizontal();
+
+            var newAsset = EditorGUILayout.ObjectField("DCC asset file:",
+                server.DCCAsset,
+                typeof(UnityEngine.Object), true);
+
+            if (newAsset != server.DCCAsset)
+            {
+                server.DCCAsset = newAsset;
+                server.m_DCCInterop = MeshSyncServerInspectorUtils.GetLauncherForAsset(server.DCCAsset);
+            }
+
+            if (server.DCCAsset != null)
+            {
+                if (GUILayout.Button("Live Edit"))
+                {
+                    GUILayout.EndHorizontal();
+                    MeshSyncServerInspectorUtils.OpenDCCAsset(server);
+                    return;
+                }
+            }
+
+            GUILayout.EndHorizontal();
+
+            if (server.m_DCCInterop == null)
+            {
+                server.m_DCCInterop = MeshSyncServerInspectorUtils.GetLauncherForAsset(server.DCCAsset);
+            }
+
+            server.m_DCCInterop?.DrawDCCMenu(server);
         }
     }
 

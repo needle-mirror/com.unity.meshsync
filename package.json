@@ -1,8 +1,8 @@
 {
   "name": "com.unity.meshsync",
   "description": "Working together with MeshSyncDCCPlugin, MeshSync provides features to reflect changes to models made in DCC tools into Unity in real time",
-  "version": "0.13.2-preview",
-  "unity": "2019.4",
+  "version": "0.14.2-preview",
+  "unity": "2020.3",
   "displayName": "MeshSync",
   "dependencies": {
     "com.unity.film-internal-utilities": "0.15.1-preview",
@@ -13,18 +13,15 @@
     "com.unity.modules.director": "1.0.0",
     "com.unity.modules.particlesystem": "1.0.0",
     "com.unity.modules.screencapture": "1.0.0",
-    "com.unity.sharp-zip-lib": "1.3.0-preview",
+    "com.unity.sharp-zip-lib": "1.3.2-preview",
     "com.unity.timeline": "1.2.18"
   },
-  "_upm": {
-    "changelog": "### Changed\n* opt: cache plugin version string\n\n### Fixed\n* fix: automatically restart server only if the component and gameobject is active\n* fix: exclude mscore from Android and iOS standalone target (#689)"
-  },
   "upmCi": {
-    "footprint": "7a21979f91b290e82b36502c594b472ffa87d646"
+    "footprint": "1f2e7a011241872ffb3b51dbbe3b0458a13c951b"
   },
   "repository": {
     "url": "https://github.com/unity3d-jp/MeshSync.git",
     "type": "git",
-    "revision": "6994d45e813a7b74b0ee48a00c262fdf96b9207f"
+    "revision": "033369573a41a33915733d113f2f89ce1e8170b4"
   }
 }
