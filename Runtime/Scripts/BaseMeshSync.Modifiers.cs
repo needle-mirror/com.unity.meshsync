@@ -515,6 +515,14 @@ namespace Unity.MeshSync {
                 return rec;
             }
 #else
+            // If the curve was exported as a mesh before, delete this now, as it's handled as a curve:
+            TransformData dtrans = data.transform;
+            EntityRecord  rec    = UpdateTransformEntity(dtrans, config);
+
+            if (rec != null) {
+                rec.DestroyMeshRendererAndFilter();
+            }
+
             return null;
 #endif
         }
