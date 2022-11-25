@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Text;
 using UnityEngine;
 using Unity.Collections;
 
@@ -306,6 +307,7 @@ internal struct AudioData {
 internal enum TextureType {
     Default,
     NormalMap,
+    NonColor
 }
 
 internal enum TextureFormat {
@@ -340,7 +342,7 @@ internal enum TextureFormat {
     RGBi32  = Type_i32 | 3,
     RGBAi32 = Type_i32 | 4,
 
-    RawFile = 0x10 << 4,
+    RawFile      = 0x10 << 4,
 }
 
 /// <summary>
@@ -495,6 +497,9 @@ internal struct MaterialPropertyData {
     [DllImport(Lib.name)]
     static extern void msMaterialPropCopyData(IntPtr self, Matrix4x4[] dst);
 
+    [DllImport(Lib.name)]
+    static extern void msMaterialPropCopyData(IntPtr self, StringBuilder dst);
+
     #endregion
 
     public enum Type {
@@ -504,6 +509,7 @@ internal struct MaterialPropertyData {
         Vector,
         Matrix,
         Texture,
+        String
     }
 
     public struct TextureRecord {
@@ -517,15 +523,35 @@ internal struct MaterialPropertyData {
     }
 
     public string name {
-        get { return Misc.S(msMaterialPropGetName(self)); }
+        get {
+            if (self == IntPtr.Zero) {
+                return default;
+            }
+
+            return Misc.S(msMaterialPropGetName(self));
+        }
+    }
+
+    public int nameID {
+        get { return  Shader.PropertyToID(name); }
     }
 
     public Type type {
-        get { return msMaterialPropGetType(self); }
+        get {
+            if (self == IntPtr.Zero) {
+                return default;
+            }
+
+            return msMaterialPropGetType(self);
+        }
     }
 
     public int intValue {
         get {
+            if (self == IntPtr.Zero) {
+                return default;
+            }
+            
             int ret = 0;
             msMaterialPropCopyData(self, ref ret);
             return ret;
@@ -534,6 +560,10 @@ internal struct MaterialPropertyData {
 
     public float floatValue {
         get {
+            if (self == IntPtr.Zero) {
+                return default;
+            }
+            
             float ret = 0;
             msMaterialPropCopyData(self, ref ret);
             return ret;
@@ -542,6 +572,10 @@ internal struct MaterialPropertyData {
 
     public Vector4 vectorValue {
         get {
+            if (self == IntPtr.Zero) {
+                return default;
+            }
+            
             Vector4 ret = Vector4.zero;
             msMaterialPropCopyData(self, ref ret);
             return ret;
@@ -550,6 +584,10 @@ internal struct MaterialPropertyData {
 
     public Matrix4x4 matrixValue {
         get {
+            if (self == IntPtr.Zero) {
+                return default;
+            }
+            
             Matrix4x4 ret = Matrix4x4.identity;
             msMaterialPropCopyData(self, ref ret);
             return ret;
@@ -558,18 +596,31 @@ internal struct MaterialPropertyData {
 
     public TextureRecord textureValue {
         get {
+            if (self == IntPtr.Zero) {
+                return default;
+            }
+            
             var ret = default(TextureRecord);
             msMaterialPropCopyData(self, ref ret);
             return ret;
         }
     }
-
     public int arrayLength {
-        get { return msMaterialPropGetArrayLength(self); }
+        get {
+            if (self == IntPtr.Zero) {
+                return default;
+            }
+
+            return msMaterialPropGetArrayLength(self);
+        }
     }
 
     public float[] floatArray {
         get {
+            if (self == IntPtr.Zero) {
+                return default;
+            }
+            
             var ret = new float[arrayLength];
             msMaterialPropCopyData(self, ret);
             return ret;
@@ -578,6 +629,10 @@ internal struct MaterialPropertyData {
 
     public Vector4[] vectorArray {
         get {
+            if (self == IntPtr.Zero) {
+                return default;
+            }
+
             var ret = new Vector4[arrayLength];
             msMaterialPropCopyData(self, ret);
             return ret;
@@ -586,10 +641,18 @@ internal struct MaterialPropertyData {
 
     public Matrix4x4[] matrixArray {
         get {
+            if (self == IntPtr.Zero) {
+                return default;
+            }
+            
             var ret = new Matrix4x4[arrayLength];
             msMaterialPropCopyData(self, ret);
             return ret;
         }
+    }
+
+    public override string ToString() {
+        return name;
     }
 }
 
@@ -3147,6 +3210,9 @@ internal struct InstanceInfoData
     [DllImport(Lib.name)]
     static extern PropertyInfoData msSceneGetPropertyInfo(IntPtr self, int i);
 
+    [DllImport(Lib.name)]
+    static extern int msSceneGetMaterialSyncMode(IntPtr self);
+
 #endregion
 
     public static implicit operator bool(SceneData v) {
@@ -3214,7 +3280,24 @@ internal struct InstanceInfoData
     public PropertyInfoData GetPropertyInfo(int i)
     {
         return msSceneGetPropertyInfo(self, i);
-    }  
+    }
+
+    public string GetMaterialSyncMode() {
+        int mode = 0;
+        // The method might not exist, we can't bump the protocol version yet:
+        try {
+            mode = msSceneGetMaterialSyncMode(self);
+        }
+        catch {
+        }
+
+        switch (mode) {
+            case 1:
+                return "Basic";
+            default:
+                return "None";
+        }
+    }
 }
 
 #endregion Scene
