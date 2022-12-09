@@ -1,11 +1,11 @@
 {
   "name": "com.unity.meshsync",
   "description": "Working together with MeshSyncDCCPlugin, MeshSync provides features to reflect changes to models made in DCC tools into Unity in real time",
-  "version": "0.16.2-preview",
+  "version": "0.16.3-preview",
   "unity": "2020.3",
   "displayName": "MeshSync",
   "dependencies": {
-    "com.unity.film-internal-utilities": "0.16.2-preview",
+    "com.unity.film-internal-utilities": "0.16.3-preview",
     "com.unity.editorcoroutines": "1.0.0",
     "com.unity.modules.audio": "1.0.0",
     "com.unity.modules.animation": "1.0.0",
@@ -16,13 +16,16 @@
     "com.unity.sharp-zip-lib": "1.3.2-preview",
     "com.unity.timeline": "1.2.18"
   },
+  "_upm": {
+    "changelog": "### Changed\n* deps: use com.unity.film-internal-utilities@0.16.3-preview\n\n### Fixed\n* fix: keep currentSessionId when switching PlayMode\n* fix: ensure calling analytics API \n* fix: remove unused meta file"
+  },
   "upmCi": {
-    "footprint": "f6e55e57c87b55cca0291410023c2b758b42eb1e"
+    "footprint": "61072bd0568695e5d5d407804130aad2aeb42831"
   },
   "documentationUrl": "https://docs.unity3d.com/Packages/com.unity.meshsync@0.16/manual/index.html",
   "repository": {
     "url": "https://github.com/unity3d-jp/MeshSync.git",
     "type": "git",
-    "revision": "792bd2b0bd6c5842edcdb318d3773eb2f701f5fa"
+    "revision": "71d6227f7eeb2e35455c9f8499e65cfc8b701b9d"
   }
 }
