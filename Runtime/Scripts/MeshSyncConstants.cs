@@ -17,6 +17,7 @@ internal static class MeshSyncConstants {
     internal static readonly int _BaseColorMap             = Shader.PropertyToID("_BaseColorMap");
     internal static readonly int _BaseMap                  = Shader.PropertyToID("_BaseMap");
     internal static readonly int _GlossMap                 = Shader.PropertyToID("_GlossMap");
+    internal static readonly int _RoughMap                 = Shader.PropertyToID("_RoughMap");
     internal static readonly int _EmissionColor            = Shader.PropertyToID("_EmissionColor");
     internal static readonly int _EmissionMap              = Shader.PropertyToID("_EmissionMap");
     internal static readonly int _EmissiveColorMap         = Shader.PropertyToID("_EmissiveColorMap");
@@ -58,7 +59,10 @@ internal static class MeshSyncConstants {
     internal static readonly int _ZTestGBuffer             = Shader.PropertyToID("_ZTestGBuffer");
     internal static readonly int _CoatMaskMap              = Shader.PropertyToID("_CoatMaskMap");
     internal static readonly int _CoatMask                 = Shader.PropertyToID("_CoatMask");
-    
+    internal static readonly int _OcclusionMap             = Shader.PropertyToID("_OcclusionMap");
+    internal static readonly int _OcclusionStrength        = Shader.PropertyToID("_OcclusionStrength");
+    internal static readonly int _SmoothnessTextureChannel = Shader.PropertyToID("_SmoothnessTextureChannel");
+
     #endregion
 
     #region Keywords
@@ -78,6 +82,8 @@ internal static class MeshSyncConstants {
     internal const string _PIXEL_DISPLACEMENT          = "_PIXEL_DISPLACEMENT";
     internal const string _VERTEX_DISPLACEMENT         = "_VERTEX_DISPLACEMENT";
     internal const string _MATERIAL_FEATURE_CLEAR_COAT = "_MATERIAL_FEATURE_CLEAR_COAT";
+    internal const string _OCCLUSIONMAP                = "_OCCLUSIONMAP";
+    internal const string _SMOOTHNESS_TEXTURE_ALBEDO_CHANNEL_A = "_SMOOTHNESS_TEXTURE_ALBEDO_CHANNEL_A";
 
     // Used to mark materials that have a specific shader setup based on a shader from the DCC tool.  
     internal const string MESHSYNC_OVERRIDE = "MESHSYNC_OVERRIDE";
