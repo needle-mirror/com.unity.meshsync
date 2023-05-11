@@ -26,7 +26,7 @@ internal static class MapsBaker {
     private static ComputeShaderHelper LoadShader(string name) {
         string file = SHADER_FILE;
 
-        if (!loadedShaders.TryGetValue(file, out ComputeShaderHelper shaderHelper)) {
+        if (!loadedShaders.TryGetValue(name, out ComputeShaderHelper shaderHelper)) {
 #if UNITY_EDITOR
             string[] shaderFiles = AssetDatabase.FindAssets(file);
             if (shaderFiles.Length > 0) {
@@ -60,13 +60,31 @@ internal static class MapsBaker {
 
         // If there is no such texture, create one with the given fallback value:
 
-        float value = fallbackPropertyValue;
-        if (materialProperties.TryGetValue(fallbackPropertyNameID, out IMaterialPropertyData fallbackMaterialProperty))
-            value = fallbackMaterialProperty.floatValue;
+        Color value = new Color(
+            fallbackPropertyValue,
+            fallbackPropertyValue,
+            fallbackPropertyValue,
+            fallbackPropertyValue);
+
+        if (materialProperties.TryGetValue(fallbackPropertyNameID,
+                out IMaterialPropertyData fallbackMaterialProperty)) {
+            switch (fallbackMaterialProperty.type) {
+                case IMaterialPropertyData.Type.Float:
+                    float v = fallbackMaterialProperty.floatValue;
+                    value = new Color(v, v, v, v);
+                    break;
+                case IMaterialPropertyData.Type.Vector:
+                    value = fallbackMaterialProperty.vectorValue;
+                    break;
+                default:
+                    Debug.LogError($"Unsupported fallback property type: {fallbackMaterialProperty.type}!");
+                    break;
+            }
+        }
 
         const int dim = 8;
 
-        Color[] pixels = Enumerable.Repeat(new Color(value, value, value, value), dim * dim).ToArray();
+        Color[] pixels = Enumerable.Repeat(value, dim * dim).ToArray();
 
         disposableTexture =
             new Texture2DDisposable(new Texture2D(dim, dim, UnityEngine.TextureFormat.RFloat, false, true));
@@ -103,7 +121,8 @@ internal static class MapsBaker {
 #if AT_USE_HDRP
     private static void BakeMaskMap(Material destMat,
         List<TextureHolder> textureHolders,
-        Dictionary<int, IMaterialPropertyData> materialProperties) {
+        Dictionary<int, IMaterialPropertyData> materialProperties,
+        BaseMeshSync owner) {
         if (!destMat.HasProperty(MeshSyncConstants._MaskMap)) return;
 
         // Mask map:
@@ -143,7 +162,7 @@ internal static class MapsBaker {
         shader.SetTexture(SHADER_CONST_METALLIC, metalTexture.Texture);
         shader.SetTexture(SHADER_CONST_SMOOTHNESS, glossOrRoughTexture.Texture);
 
-        RenderTexture texture = shader.RenderToTexture(destMat.GetTexture(MeshSyncConstants._MaskMap));
+        RenderTexture texture = shader.RenderToTexture(destMat.GetTexture(MeshSyncConstants._MaskMap), owner);
 
         destMat.EnableKeyword(MeshSyncConstants._MASKMAP);
 
@@ -155,7 +174,8 @@ internal static class MapsBaker {
 #else
     private static void BakeSmoothness(Material destMat,
         List<TextureHolder> textureHolders,
-        Dictionary<int, IMaterialPropertyData> materialProperties) {
+        Dictionary<int, IMaterialPropertyData> materialProperties,
+        BaseMeshSync owner) {
         if (!destMat.HasProperty(_SmoothnessTextureChannel)) return;
 
         int smoothnessChannel = destMat.GetInt(_SmoothnessTextureChannel);
@@ -176,7 +196,7 @@ internal static class MapsBaker {
             // Bake to albedo alpha
             channelName = MeshSyncConstants._MainTex;
             texturesExist |=
-                FindTexture(MeshSyncConstants._MainTex, textureHolders, materialProperties, 0, 0,
+                FindTexture(MeshSyncConstants._MainTex, textureHolders, materialProperties, MeshSyncConstants._Color, 0,
                     out rgbTexture);
         }
         else {
@@ -215,8 +235,8 @@ internal static class MapsBaker {
         shader.SetTexture(SHADER_CONST_SMOOTHNESS, glossOrRoughTexture.Texture);
         shader.SetTexture(SHADER_CONST_RGB, rgbTexture.Texture);
 
-        RenderTexture texture = shader.RenderToTexture(destMat.GetTexture(channelName));
-
+        RenderTexture texture = shader.RenderToTexture(destMat.GetTexture(channelName), owner);
+        
         if (channelName == MeshSyncConstants._MetallicGlossMap) {
             destMat.EnableKeyword(MeshSyncConstants._METALLICGLOSSMAP);
             destMat.EnableKeyword(MeshSyncConstants._METALLICSPECGLOSSMAP);
@@ -235,11 +255,12 @@ internal static class MapsBaker {
 
     public static void BakeMaps(Material destMat,
         List<TextureHolder> textureHolders,
-        Dictionary<int, IMaterialPropertyData> materialProperties) {
+        Dictionary<int, IMaterialPropertyData> materialProperties,
+        BaseMeshSync owner) {
 #if AT_USE_HDRP
-        BakeMaskMap(destMat, textureHolders, materialProperties);
+        BakeMaskMap(destMat, textureHolders, materialProperties, owner);
 #else
-        BakeSmoothness(destMat, textureHolders, materialProperties);
+        BakeSmoothness(destMat, textureHolders, materialProperties, owner);
 #endif
     }
 }

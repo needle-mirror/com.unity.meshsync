@@ -30,7 +30,7 @@ internal static class MeshSyncServerInspectorUtils {
 
             if (prop.path != lastPathDrawn) {
                 bool wasExpanded = foldouts.Contains(prop.path);
-                expanded = EditorGUILayout.Foldout(wasExpanded, prop.path);
+                expanded = EditorGUILayout.Foldout(wasExpanded, prop.path, toggleOnLabelClick:true);
 
                 if (wasExpanded != expanded) {
                     if (wasExpanded)
@@ -191,8 +191,12 @@ internal static class MeshSyncServerInspectorUtils {
 
     internal static IDCCLauncher GetLauncherForAsset(Object asset) {
         if (asset == null) return null;
-
-        string assetPath = AssetDatabase.GetAssetPath(asset);
+        
+        return GetLauncherForAsset(AssetDatabase.GetAssetPath(asset));
+    }
+    
+    internal static IDCCLauncher GetLauncherForAsset(string assetPath) {
+        if (assetPath == null) return null;
 
         if (Path.GetExtension(assetPath) == BlenderLauncher.FileFormat) return new BlenderLauncher();
 

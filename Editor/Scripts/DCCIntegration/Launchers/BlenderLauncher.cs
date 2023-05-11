@@ -14,7 +14,12 @@ internal class BlenderLauncher : IDCCLauncher {
     private        Process m_blenderProcess;
     private static bool    redirectBlenderToUnityConsole;
 
-    public RunMode runMode { get; set; }
+    public bool    HasProcess => m_blenderProcess != null;
+    
+    public RunMode runMode    { get; set; }
+
+    internal string InteropFile =
+        Path.GetFullPath("Packages/com.unity.meshsync/Editor/Scripts/DCCIntegration/Launchers/blender_interop.py");
 
     private static string GetBlenderPath() {
         string blenderPath = EditorPrefs.GetString(editorSettingPath);
@@ -47,8 +52,16 @@ internal class BlenderLauncher : IDCCLauncher {
     }
 
     #region IDCCLauncher
-
+    
     public void OpenDCCTool(UnityEngine.Object asset) {
+        string assetPath = FilmInternalUtilities.AssetUtility.ToAssetRelativePath(AssetDatabase.GetAssetPath(asset));
+        OpenDCCTool(assetPath);
+    }
+
+    public void OpenDCCTool(string assetPath)
+    {
+        assetPath = Path.GetFullPath(assetPath);
+        
         Dispose();
 
         ProcessStartInfo startInfo = new ProcessStartInfo();
@@ -59,13 +72,9 @@ internal class BlenderLauncher : IDCCLauncher {
             return;
         }
 
-        string assetPath = FilmInternalUtilities.AssetUtility.ToAssetRelativePath(AssetDatabase.GetAssetPath(asset));
-
         string absoluteAssetPath = Path.Combine(Application.dataPath, assetPath).Replace('\\', '/');
 
-        string scriptPath = Path.GetFullPath("Packages/com.unity.meshsync/Editor/Scripts/DCCIntegration/Launchers/blender_interop.py");
-
-        startInfo.Arguments = $"\"{absoluteAssetPath}\" -P \"{scriptPath}\"";
+        startInfo.Arguments = $"\"{absoluteAssetPath}\" -P \"{InteropFile}\"";
 
         if (runMode != RunMode.GUI)
             startInfo.Arguments = "-b " + startInfo.Arguments;

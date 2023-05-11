@@ -490,7 +490,7 @@ public abstract partial class BaseMeshSync : MonoBehaviour, IObservable<MeshSync
     //----------------------------------------------------------------------------------------------------------------------    
 
 
-    private static Material CreateDefaultMaterial(string shaderName = null) {
+    private Material CreateDefaultMaterial(string shaderName = null) {
         Material mat = new Material(GetShader(shaderName, out _));
         UpdateShader(mat, shaderName);
         return mat;
@@ -1014,6 +1014,8 @@ public abstract partial class BaseMeshSync : MonoBehaviour, IObservable<MeshSync
 
         MaterialHolder dst = m_materialList.Find(a => a.id == materialID);
 
+        bool isNewMaterial = dst == null || dst.material == null;
+        
         //if (invalid && creating materials is allowed)
         if ((dst == null || dst.material == null || dst.name != materialName) && importerSettings.CreateMaterials) {
             if (null == dst) {
@@ -1026,7 +1028,7 @@ public abstract partial class BaseMeshSync : MonoBehaviour, IObservable<MeshSync
 #if UNITY_EDITOR
             dst.material = SearchMaterialInEditor(importerSettings.MaterialSearchMode, materialName);
             if (null != dst.material) {
-                dst.ShouldApplyMaterialData = false;
+                isNewMaterial = false;
             }
             else
 #endif
@@ -1041,15 +1043,14 @@ public abstract partial class BaseMeshSync : MonoBehaviour, IObservable<MeshSync
         if (dst == null || dst.material == null)
             return;
         
-        if (importerSettings.OverwriteExportedMaterials)
-            dst.ShouldApplyMaterialData = true;
-
+        bool shouldApplyMaterialData = isNewMaterial || importerSettings.OverwriteExportedMaterials;
+            
         dst.name  = materialName;
         dst.index = src.index;
         dst.color = src.color;
 
         Material destMat = dst.material;
-        if (importerSettings.CreateMaterials && dst.ShouldApplyMaterialData) ApplyMaterialDataToMaterial(src, destMat, m_textureList);
+        if (importerSettings.CreateMaterials && shouldApplyMaterialData) ApplyMaterialDataToMaterial(src, destMat, m_textureList);
 
         if (onUpdateMaterial != null)
             onUpdateMaterial.Invoke(destMat, src);
@@ -1182,7 +1183,7 @@ public abstract partial class BaseMeshSync : MonoBehaviour, IObservable<MeshSync
         foreach (KeyValuePair<int, IMaterialPropertyData> prop in materialProperties)
             ApplyMaterialProperty(destMat, textureHolders, prop.Value, prop.Key, materialProperties, src.shader);
 
-        MapsBaker.BakeMaps(destMat, textureHolders, materialProperties);
+        MapsBaker.BakeMaps(destMat, textureHolders, materialProperties, this);
 
         // Need to update shader again to ensure any custom setup is still there after the material properties were applied.
         UpdateCustomShaderSettings(destMat, src.shader);
@@ -1746,13 +1747,98 @@ public abstract partial class BaseMeshSync : MonoBehaviour, IObservable<MeshSync
         return rec;
     }
 
+    static Transform FindOrCreateByPath(Transform parent, string path, Action<string> parentCreationCallback, bool worldPositionStays = true) {
+        string[] names = path.Split('/');
+        if (names.Length <= 0)
+            return null;
+        
+        //if parent is null, search from root 
+        Transform t             = parent;
+        int       tokenStartIdx = 0;
+        if (null == t) {
+            string rootGameObjectName = names[0];
+            t = FilmInternalUtilities.GameObjectUtility.FindFirstRoot(rootGameObjectName);
+            if (null == t) {
+                GameObject go = new GameObject(rootGameObjectName);
+                t = go.GetComponent<Transform>();
+            }
+
+            tokenStartIdx = 1;
+        }
+
+        static Transform FindOrCreateChild(Transform t, string childName, out bool didCreate, bool worldPositionStays = true) {
+            Transform childT = t.Find(childName);
+            if (null != childT) {
+                didCreate = false;
+                return childT;
+            }
+
+            GameObject go = new GameObject(childName);
+            childT = go.transform;
+            childT.SetParent(t, worldPositionStays);
+            didCreate = true;
+            return childT;
+        }
+        
+        //loop over hierarchy of names and generate parents that don't exist
+        int          nameLength       = names.Length;
+        List<string> processedParents = new List<string>();
+        for (int i = tokenStartIdx; i < nameLength; ++i) {
+            string nameToken = names[i];
+            if (string.IsNullOrEmpty(nameToken))
+                continue;
+            
+            processedParents.Add(nameToken);
+
+            t = FindOrCreateChild(t, nameToken, out var didCreate, worldPositionStays);
+            if (i < nameLength - 1 && didCreate) {
+                var parentPath = String.Join("/", processedParents);
+                if (!parentPath.StartsWith("/")) {
+                    parentPath = $"/{parentPath}";
+                }
+                
+                parentCreationCallback?.Invoke(parentPath);
+            }
+
+            if (null == t)
+                return null;
+        }
+
+        return t;
+    }
+
+    void AddClientObject(string path, out EntityRecord rec) {
+        if (m_clientObjects.TryGetValue(path, out rec))
+            if (rec.go == null) {
+                m_clientObjects.Remove(path);
+                rec = null;
+            }
+
+        if (rec == null) {
+            var trans = FindOrCreateByPath(m_rootObject, path,
+                delegate(string parentPath) {
+                    EntityRecord parentRec = null;
+                    AddClientObject(parentPath, out parentRec);
+                    if (parentRec.dataType == EntityType.Unknown)
+                        parentRec.dataType = EntityType.Transform;
+                },
+                false);
+
+            rec = new EntityRecord {
+                go     = trans.gameObject,
+                trans  = trans,
+                recved = true
+            };
+            m_clientObjects.Add(path, rec);
+        }
+    }
+
     private EntityRecord UpdateTransformEntity(TransformData data, MeshSyncPlayerConfig config) {
         string path   = data.path;
         int    hostID = data.hostID;
         if (path.Length == 0)
             return null;
 
-        Transform    trans = null;
         EntityRecord rec   = null;
         if (hostID != Lib.invalidID) {
             if (m_hostObjects.TryGetValue(hostID, out rec))
@@ -1765,21 +1851,7 @@ public abstract partial class BaseMeshSync : MonoBehaviour, IObservable<MeshSync
                 return null;
         }
         else {
-            if (m_clientObjects.TryGetValue(path, out rec))
-                if (rec.go == null) {
-                    m_clientObjects.Remove(path);
-                    rec = null;
-                }
-
-            if (rec == null) {
-                trans = FilmInternalUtilities.GameObjectUtility.FindOrCreateByPath(m_rootObject, path, false);
-                rec = new EntityRecord {
-                    go     = trans.gameObject,
-                    trans  = trans,
-                    recved = true
-                };
-                m_clientObjects.Add(path, rec);
-            }
+            AddClientObject(path, out rec);
         }
 
         return UpdateTransformEntity(data, config, rec);
@@ -2114,7 +2186,7 @@ public abstract partial class BaseMeshSync : MonoBehaviour, IObservable<MeshSync
                 break;
             case InstanceHandlingType.Copies:
             case InstanceHandlingType.Prefabs:
-                UpdateInstanceInfo_CopiesAndPrefabs(data, infoRecord, instancedEntityRecord, instanceRendererParent);
+                UpdateInstanceInfo_CopiesAndPrefabs(data, infoRecord, instanceRendererParent);
                 break;
             default:
                 break;
@@ -2122,11 +2194,10 @@ public abstract partial class BaseMeshSync : MonoBehaviour, IObservable<MeshSync
 
         return infoRecord;
     }
-
+    
     private void UpdateInstanceInfo_CopiesAndPrefabs(
         InstanceInfoData data,
         InstanceInfoRecord infoRecord,
-        EntityRecord instancedEntityRecord,
         GameObject instanceRendererParent) {
         // Make sure the other renderer is removed if this was not a copy or prefab before:
         if (infoRecord.renderer != null) {
@@ -2137,9 +2208,7 @@ public abstract partial class BaseMeshSync : MonoBehaviour, IObservable<MeshSync
         infoRecord.DeleteInstanceObjects();
 
         instanceNames.Add(infoRecord.go.name);
-
-        MeshSyncPlayerConfig config = GetConfigV();
-
+        
         if (infoRecord.go.transform.parent == null ||
             !instanceNames.Contains(infoRecord.go.transform.parent.name)) {
             GameObject instanceObjectOriginal;
@@ -2164,11 +2233,56 @@ public abstract partial class BaseMeshSync : MonoBehaviour, IObservable<MeshSync
                     instancedCopy = Instantiate(instanceObjectOriginal, instanceRendererParent.transform);
                 }
 
+                // Remove (Clone) at the end so the path lookup works:
+                instancedCopy.name = instanceObjectOriginal.name;
+
                 SetInstanceTransform(instancedCopy, instanceRendererParent, mat);
                 EnableInstancedCopy(instancedCopy);
 
                 infoRecord.instanceObjects.Add(instancedCopy);
             }
+        }
+        else {
+            // This instance exists inside another instanced object,
+            // update its transform to be correct relative to the parent on the infoRecord:
+            // For example, in an object structure like this:
+            // MainObject
+            //   InstancedChildA
+            //     InstancedChildB
+            // For the instance renderer method, InstancedChildA and InstancedChildB exist as
+            // MeshSyncInstanceRenderer components on MainObject and the transforms in data.transforms
+            // are relative to MainObject. 
+            // In this mode, where we use copies of the objects, InstancedChildB already exists as child of InstancedChildA
+            // but the transform of InstancedChildB needs to be updated to be relative to MainObject.
+
+            if (data.transforms.Length != 1) {
+                Debug.LogWarning(
+                    $"[MeshSync] There should never be more than 1 transform on instances inside other instances: {data.path}");
+                return;
+            }
+
+            // Find the instanced copy as (a potentially indirect) child of `MainObject`:
+            var instancedCopy =
+                FilmInternalUtilities.GameObjectUtility.FindByPath(instanceRendererParent.transform, data.path);
+
+            if (instancedCopy == null) {
+                Debug.LogWarning(
+                    $"[MeshSync] No instanced copy found for {data.path}");
+                return;
+            }
+
+            // Set the transform relative to `MainObject`.
+            // The easiest and safest way to do that is to:
+            // - parent the instanced copy to `MainObject`
+            // - set the transform matrix
+            // - restore the original parent
+            var originalParent = instancedCopy.parent;
+
+            instancedCopy.transform.SetParent(instanceRendererParent.transform);
+
+            SetInstanceTransform(instancedCopy.gameObject, instanceRendererParent, data.transforms[0]);
+
+            instancedCopy.SetParent(originalParent);
         }
     }
 
@@ -2402,11 +2516,33 @@ public abstract partial class BaseMeshSync : MonoBehaviour, IObservable<MeshSync
 #endif
     }
 
-    private void ReassignMaterials(bool recordUndo) {
+    private void ReassignMaterials(bool recordUndo)
+    {
         foreach (KeyValuePair<string, EntityRecord> rec in m_clientObjects)
             AssignMaterials(rec.Value, recordUndo);
         foreach (KeyValuePair<int, EntityRecord> rec in m_hostObjects)
             AssignMaterials(rec.Value, recordUndo);
+        foreach (KeyValuePair<string, EntityRecord> rec in m_clientInstancedEntities)
+        {
+            AssignMaterials(rec.Value, recordUndo);
+
+            if (m_clientInstances.TryGetValue(rec.Key, out var instanceInfoRecord))
+            {
+                if (instanceInfoRecord.renderer != null)
+                {
+                    instanceInfoRecord.renderer.UpdateMaterials();
+                }
+                
+                foreach (var instancedCopy in instanceInfoRecord.instanceObjects)
+                {
+                    var renderer = instancedCopy.GetComponent<Renderer>();
+                    if (renderer != null)
+                    {
+                        AssignMaterials(renderer, rec.Value.materialIDs, recordUndo);
+                    }
+                }
+            }
+        }
     }
 
     private void AssignMaterials(EntityRecord rec, bool recordUndo) {
@@ -2414,17 +2550,21 @@ public abstract partial class BaseMeshSync : MonoBehaviour, IObservable<MeshSync
             return;
 
         Renderer r = rec.meshRenderer != null ? (Renderer)rec.meshRenderer : (Renderer)rec.skinnedMeshRenderer;
+        AssignMaterials(r, rec.materialIDs, recordUndo);
+    }
+    
+    private void AssignMaterials(Renderer r, int[]materialIDs , bool recordUndo) {
         if (r == null)
             return;
 
         bool       changed       = false;
-        int        materialCount = rec.materialIDs.Length;
+        int        materialCount = materialIDs.Length;
         Material[] materials     = new Material[materialCount];
         Material[] prevMaterials = r.sharedMaterials;
         Array.Copy(prevMaterials, materials, Math.Min(prevMaterials.Length, materials.Length));
 
         for (int si = 0; si < materialCount; ++si) {
-            int      mid      = rec.materialIDs[si];
+            int      mid      = materialIDs[si];
             Material material = FindMaterial(mid);
             if (material != null) {
                 if (materials[si] == material)
@@ -2889,6 +3029,15 @@ public abstract partial class BaseMeshSync : MonoBehaviour, IObservable<MeshSync
         m_tmpV3.Dispose();
         m_tmpV4.Dispose();
         m_tmpC.Dispose();
+        
+#if UNITY_EDITOR
+        // Release any render textures that have not been released:
+        foreach (var renderTexture in CreatedRenderTextures)
+        {
+            if (renderTexture.IsCreated())
+                renderTexture.Release();
+        }
+#endif
     }
 
 //----------------------------------------------------------------------------------------------------------------------
@@ -3011,6 +3160,22 @@ public abstract partial class BaseMeshSync : MonoBehaviour, IObservable<MeshSync
 
 #if AT_USE_SPLINES
     PinnedList<float3> m_tmpFloat3 = new PinnedList<float3>();
+#endif
+    
+#if UNITY_EDITOR
+    [NonSerialized]
+    private List<RenderTexture> CreatedRenderTextures = new List<RenderTexture>();
+
+    internal void AddCreatedRenderTexture(RenderTexture renderTexture) {
+        // Make sure the list doesn't grow infinitely with already released references:
+        for (int i = CreatedRenderTextures.Count - 1; i >= 0; i--) {
+            if (!CreatedRenderTextures[i].IsCreated()) {
+                CreatedRenderTextures.RemoveAt(i);
+            }
+        }
+        
+        CreatedRenderTextures.Add(renderTexture);
+    }
 #endif
 
     //----------------------------------------------------------------------------------------------------------------------
