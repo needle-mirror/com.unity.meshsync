@@ -890,14 +890,19 @@ public abstract partial class BaseMeshSync : MonoBehaviour, IObservable<MeshSync
 
     //----------------------------------------------------------------------------------------------------------------------
 
-    private void UpdateTextureAsset(TextureData src) {
+    private void UpdateTextureAsset(TextureData src)
+    {
         MakeSureAssetDirectoryExists();
         Texture2D texture = null;
 #if UNITY_EDITOR
-        Action<string> doImport = (path) => {
+        Action<string, bool> doImport = (path, forceReimport) => {
             bool assetExisted = AssetDatabase.LoadAssetAtPath<Texture2D>(path) != null;
 
-            AssetDatabase.ImportAsset(path);
+            if (forceReimport)
+            {
+                AssetDatabase.ImportAsset(path);
+            }
+
             texture = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
             if (texture != null) {
                 TextureImporter importer = (TextureImporter)AssetImporter.GetAtPath(path);
@@ -913,12 +918,20 @@ public abstract partial class BaseMeshSync : MonoBehaviour, IObservable<MeshSync
                 if (importer != null)
                     switch (src.type) {
                         case TextureType.NormalMap:
-                            importer.textureType = TextureImporterType.NormalMap;
-                            needReimport         = true;
+                            if (importer.textureType != TextureImporterType.NormalMap)
+                            {
+                                importer.textureType = TextureImporterType.NormalMap;
+                                needReimport = true;
+                            }
+
                             break;
                         case TextureType.NonColor:
-                            importer.sRGBTexture = false;
-                            needReimport         = true;
+                            if (importer.sRGBTexture)
+                            {
+                                importer.sRGBTexture = false;
+                                needReimport = true;
+                            }
+
                             break;
                     }
 
@@ -935,8 +948,11 @@ public abstract partial class BaseMeshSync : MonoBehaviour, IObservable<MeshSync
 #if UNITY_EDITOR
             // write data to file and import
             string path = m_assetsFolder + "/" + src.name;
+            
+            bool needImport = GetConfigV().GetModelImporterSettings().ImportTextures || !File.Exists(path);
+            
             if (src.WriteToFile(path))
-                doImport(path);
+                doImport(path, needImport);
 #endif
         }
         else {
@@ -978,7 +994,7 @@ public abstract partial class BaseMeshSync : MonoBehaviour, IObservable<MeshSync
 
             if (exported) {
                 texture = null;
-                doImport(path);
+                doImport(path, true);
             }
 #endif
         }
@@ -1747,7 +1763,11 @@ public abstract partial class BaseMeshSync : MonoBehaviour, IObservable<MeshSync
         return rec;
     }
 
-    static Transform FindOrCreateByPath(Transform parent, string path, Action<string> parentCreationCallback, bool worldPositionStays = true) {
+    static Transform FindOrCreateByPath(Transform parent, 
+        string path,
+        Action<string> parentCreationCallback,
+        bool worldPositionStays = true, 
+        int gameObjectLayer = -1) {
         string[] names = path.Split('/');
         if (names.Length <= 0)
             return null;
@@ -1761,12 +1781,16 @@ public abstract partial class BaseMeshSync : MonoBehaviour, IObservable<MeshSync
             if (null == t) {
                 GameObject go = new GameObject(rootGameObjectName);
                 t = go.GetComponent<Transform>();
+
+                if (gameObjectLayer != -1) {
+                    go.layer = gameObjectLayer;
+                }
             }
 
             tokenStartIdx = 1;
         }
 
-        static Transform FindOrCreateChild(Transform t, string childName, out bool didCreate, bool worldPositionStays = true) {
+        Transform FindOrCreateChild(Transform t, string childName, out bool didCreate, bool worldPositionStays = true) {
             Transform childT = t.Find(childName);
             if (null != childT) {
                 didCreate = false;
@@ -1774,6 +1798,11 @@ public abstract partial class BaseMeshSync : MonoBehaviour, IObservable<MeshSync
             }
 
             GameObject go = new GameObject(childName);
+
+            if (gameObjectLayer != -1) {
+                go.layer = gameObjectLayer;
+            }
+            
             childT = go.transform;
             childT.SetParent(t, worldPositionStays);
             didCreate = true;
@@ -1822,7 +1851,8 @@ public abstract partial class BaseMeshSync : MonoBehaviour, IObservable<MeshSync
                     if (parentRec.dataType == EntityType.Unknown)
                         parentRec.dataType = EntityType.Transform;
                 },
-                false);
+                false,
+                m_rootObject.gameObject.layer);
 
             rec = new EntityRecord {
                 go     = trans.gameObject,
@@ -2116,7 +2146,9 @@ public abstract partial class BaseMeshSync : MonoBehaviour, IObservable<MeshSync
         if (!m_clientInstancedEntities.TryGetValue(data.path, out EntityRecord rec) || rec.go == null) {
             Transform trans =
                 FilmInternalUtilities.GameObjectUtility.FindOrCreateByPath(m_rootObject, data.path, false);
-
+        
+            // Ensure any objects we create are on the same layer as the server:
+            trans.gameObject.layer = m_rootObject.gameObject.layer;
             rec = new EntityRecord {
                 go     = trans.gameObject,
                 trans  = trans,

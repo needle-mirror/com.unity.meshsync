@@ -1,7 +1,7 @@
 {
   "name": "com.unity.meshsync",
   "description": "Working together with MeshSyncDCCPlugin, MeshSync provides features to reflect changes to models made in DCC tools into Unity in real time",
-  "version": "0.17.2-preview",
+  "version": "0.17.3-preview",
   "unity": "2020.3",
   "displayName": "MeshSync",
   "dependencies": {
@@ -17,15 +17,15 @@
     "com.unity.timeline": "1.2.18"
   },
   "_upm": {
-    "changelog": "### Added\n* feat: add IsLiveEditing API to check whether live editing is active \n* feat: add DefaultShader field to set the default shader instead of the default of each RP \n\n### Fixed\n* fix: prevent overwriting materials when OverwriteExportedMaterials is false\n* fix: keep track of RenderTextures and release them when the server is destroyed. \n* fix: transform fixes for nested instances \n* fix: Fix for baking smoothness to albedo alpha. \n* fix: add empty transforms to the list of objects for making instances\n* fix: toggle foldout state when clicking the label in the inspector UI\n* fix: update the material of instanced meshes after assigning to the slot in MeshSyncServer"
+    "changelog": "### Added\n* feat: auto installation for Blender 3.4\n* internal: add a field to skip texture imports\n\n### Changed\n* change: send all instanced meshes at once to avoid instance display issues\n* change: put any created child objects on the same layer as the server \n* opt: make texture import faster and ensure texture is still loaded when skipping import \n\n### Fixed\n* fix: warnings when drawing \"Default Shader\" object field\n* internal-fix: incorrect path when opening an asset with a DCC Tool"
   },
   "upmCi": {
-    "footprint": "a95b8f1b5fdd7ed845034977dcd9943b905d3f96"
+    "footprint": "a7835750a790112c7c27b3e5d215329d2350b0d5"
   },
   "documentationUrl": "https://docs.unity3d.com/Packages/com.unity.meshsync@0.17/manual/index.html",
   "repository": {
     "url": "https://github.com/unity3d-jp/MeshSync.git",
     "type": "git",
-    "revision": "3f13f0a82079068bffc56ea908e8ed6e9a642b1d"
+    "revision": "3bcbdf546f73db7939aee66badf04ad40af0ca22"
   }
 }
